@@ -84,6 +84,11 @@ pub enum GitService {
     /// このエコシステム独自のRedmine相当実装(RS-Chiketto)。標準Redmine
     /// APIとは形状が異なる箇所があるため別variantとして扱う。
     RsChiketto,
+    /// このエコシステム独自のGitフォージ実装(RS-Git、旧称RGit)。
+    /// `GET /api/repos`(認証無しでは公開リポジトリのみ)を叩く。
+    /// 2026-07-22追記: RS-Ops・RS-Git・aruaru-llmの「SET」完成の一環として
+    /// 追加。
+    RsGit,
 }
 
 impl GitService {
@@ -96,6 +101,7 @@ impl GitService {
             GitService::Bitbucket => "implemented (public REST API 2.0, verified live against bitbucket.org)",
             GitService::Redmine => "implemented (standard /issues.json REST API; verified against a live public Redmine instance)",
             GitService::Gitbucket => "implemented against GitBucket's documented GitHub-API-v3-compatible shape, but NOT verified live (no public GitBucket demo instance exists to test against — point it at your own instance's base_url to confirm)",
+            GitService::RsGit => "implemented (calls this ecosystem's own RS-Git `GET /api/repos`, which returns a plain JSON array of repo names); verified live against https://runo.tokyo/rs-git on 2026-07-22 (returned an empty array — no repos are public there yet, so the empty case is what was exercised, not a populated list)",
         }
     }
 }

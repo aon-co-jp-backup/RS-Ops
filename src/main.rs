@@ -4,7 +4,8 @@ use rs_ops::mail::{self, SmtpConfig};
 use rs_ops::model::{AiTarget, ProjectEntry};
 use rs_ops::priority::{self, PriorityStore};
 use rs_ops::provider::{
-    all_service_statuses, BitbucketProvider, GitHubProvider, GitLabProvider, GitbucketProvider, RedmineProvider, RsChikettoProvider,
+    all_service_statuses, AruaruLlmProvider, BitbucketProvider, GitHubProvider, GitLabProvider, GitbucketProvider, RedmineProvider,
+    RsChikettoProvider, RsGitProvider,
 };
 use rs_ops::scanner;
 use rs_ops::templates::generate_template;
@@ -19,6 +20,11 @@ struct AppConfig {
     scan_root: PathBuf,
     rs_chiketto_url: String,
     redmine_url: Option<String>,
+    /// RS-Git(このエコシステム独自のGitフォージ)インスタンスのURL。
+    /// 2026-07-22、RS-Ops/RS-Git/aruaru-llmの「SET」完成の一環として追加。
+    rs_git_url: String,
+    /// aruaru-llm(契約不要の独自AI、open-cudaとSET構成)インスタンスのURL。
+    aruaru_llm_url: String,
     ticket_queue: Arc<TicketQueue>,
     priority_store: Arc<PriorityStore>,
     auth: Arc<AuthStore>,
@@ -222,6 +228,34 @@ async fn rs_chiketto_health(cfg: poem::web::Data<&Arc<AppConfig>>) -> Json<serde
                 "healthy": healthy,
                 "unauthenticated_tickets_probe_status": probe_status,
             }))
+        }
+        Err(e) => Json(serde_json::json!({"ok": false, "error": e.to_string()})),
+    }
+}
+
+/// RS-Git(このエコシステム独自のGitフォージ)の公開リポジトリ一覧。
+/// `RS_OPS_RS_GIT_URL`で接続先を指定する(未設定時は既定でローカル
+/// `http://127.0.0.1:8090`——RS-Git単体をローカルで起動して確認する
+/// 際のデフォルトポートに合わせている)。
+#[handler]
+async fn rs_git_repos(cfg: poem::web::Data<&Arc<AppConfig>>) -> Json<serde_json::Value> {
+    let provider = RsGitProvider::new(cfg.rs_git_url.clone());
+    match provider.list_repos().await {
+        Ok(repos) => Json(serde_json::json!({"ok": true, "repos": repos})),
+        Err(e) => Json(serde_json::json!({"ok": false, "error": e.to_string()})),
+    }
+}
+
+/// aruaru-llm(契約不要の独自AI、open-cudaとSET構成)のヘルスチェック
+/// + 実際の応答エンジン名の取得(「本物の対話生成AIかどうか」を隠さず
+/// 表示する、aruaru-llm自身の設計方針をそのままRS-Ops側でも反映する)。
+#[handler]
+async fn aruaru_llm_health(cfg: poem::web::Data<&Arc<AppConfig>>) -> Json<serde_json::Value> {
+    let provider = AruaruLlmProvider::new(cfg.aruaru_llm_url.clone());
+    match provider.health_check().await {
+        Ok(healthy) => {
+            let engine = provider.probe_engine().await.ok();
+            Json(serde_json::json!({"ok": true, "healthy": healthy, "engine": engine}))
         }
         Err(e) => Json(serde_json::json!({"ok": false, "error": e.to_string()})),
     }
@@ -496,6 +530,8 @@ fn build_app(cfg: Arc<AppConfig>) -> impl poem::Endpoint {
         .at("/api/redmine/issues", get(redmine_issues))
         .at("/api/gitbucket/repos", get(gitbucket_repos))
         .at("/api/rs-chiketto/health", get(rs_chiketto_health))
+        .at("/api/rs-git/repos", get(rs_git_repos))
+        .at("/api/aruaru-llm/health", get(aruaru_llm_health))
         .at("/api/generate", get(generate))
         .at("/api/tickets/poll-now", post(poll_tickets_now))
         .at("/api/tickets/pending-tasks", get(pending_tasks))
@@ -519,6 +555,10 @@ async fn main() -> Result<(), std::io::Error> {
     let rs_chiketto_url = std::env::var("RS_OPS_RS_CHIKETTO_URL")
         .unwrap_or_else(|_| "http://127.0.0.1:8100".to_string());
     let redmine_url = std::env::var("RS_OPS_REDMINE_URL").ok();
+    let rs_git_url = std::env::var("RS_OPS_RS_GIT_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:8090".to_string());
+    let aruaru_llm_url = std::env::var("RS_OPS_ARUARU_LLM_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:4600".to_string());
     let data_dir = std::env::var("RS_OPS_DATA_DIR")
         .unwrap_or_else(|_| "data".to_string());
     let poll_interval: u64 = std::env::var("RS_OPS_TICKET_POLL_SECS")
@@ -548,6 +588,8 @@ async fn main() -> Result<(), std::io::Error> {
         scan_root: PathBuf::from(scan_root),
         rs_chiketto_url: rs_chiketto_url.clone(),
         redmine_url: redmine_url.clone(),
+        rs_git_url,
+        aruaru_llm_url,
         ticket_queue: ticket_queue.clone(),
         priority_store,
         auth,
@@ -581,6 +623,8 @@ mod handler_tests {
             scan_root: dir.path().to_path_buf(),
             rs_chiketto_url: "http://127.0.0.1:1".to_string(),
             redmine_url: None,
+            rs_git_url: "http://127.0.0.1:1".to_string(),
+            aruaru_llm_url: "http://127.0.0.1:1".to_string(),
             ticket_queue: Arc::new(TicketQueue::load(dir.path().join("queue.json"))),
             priority_store: Arc::new(PriorityStore::load(dir.path().join("priorities.json"))),
             auth: Arc::new(AuthStore::default()),

@@ -66,6 +66,48 @@ RS-Sync/RS-Git等と同じ方針: `poem`クレートを直接利用する単純�
 
 ## HANDOFF
 
+- **2026-07-22(続き4) runo.tokyo側でRS-Ops(RS-Git/aruaru-llmとのSET)を
+  「プロジェクトシリーズ索引」+「エコシステム全体を見る」節で紹介**
+  (ユーザー指示「RS-Ops/RS-Git/aruaru-llmのSETが完成したら
+  easy-web.tokyo/RS-Opsで運用、runo.tokyo/RS-Opsで紹介」への対応、
+  実際の作業は`runo.tokyo`リポジトリ側)。
+  1. 前回パス(続き3以前)で実装済みだった`src/provider.rs`の
+     `RsGitProvider`(RS-Git `GET /api/repos`)・`AruaruLlmProvider`
+     (aruaru-llm `/healthz`・`/v1/chat`)、`src/model.rs`の
+     `GitService::RsGit`、`src/main.rs`の`/api/rs-git/repos`・
+     `/api/aruaru-llm/health`ルートが、実際にファイルへ保存されている
+     ことをソース読み込みで再確認した(前回セッションの要約通り、
+     この session でも`Shell`ツールが応答不能だったため
+     `cargo build`/`cargo test`は実行できなかったが、コード自体は
+     `bail!`/`Result`のimport済み・`RepoSummary`の構造体リテラルの
+     フィールド一致・ルート登録の並びを目視で確認し、明らかな
+     コンパイルエラーは見当たらなかった)。
+  2. `runo.tokyo`側で当初「/RS-Ops」という専用サブサービスページ・
+     ルートを追加したが、ユーザーから「プロジェクトシリーズ　と　
+     エコシステム全体を見るの中で紹介して」との指示を受け、専用ルート
+     は撤回。代わりに`runo.tokyo`の`src/meta_index.rs::PROJECTS`に
+     RS-Opsエントリ(RS-Git/aruaru-llmとのSET連携である旨を記載)を
+     追加し、TOPページの「エコシステム全体を見る」節
+     (`render_runo_link_section`)にもRS-Ops・RS-Git・aruaru-llmへの
+     直接リンクを追記した。詳細は`runo.tokyo/CLAUDE.md`の同日HANDOFF
+     参照。
+  3. **easy-web.tokyo/RS-Opsでの本体運用は未着手**。これはRS-Opsの
+     コード変更だけでは実現できず、(a) VPS上でRS-Opsをビルド・
+     systemdサービス化、(b) `easy-web.tokyo`のnginx 443番server
+     ブロックに`location /RS-Ops/`のproxy_pass追加、が必要
+     (`RS-Git`が`runo.tokyo/rs-git`で運用されている際と同じパターン)。
+     このセッションではSSH/VPSアクセスを行っておらず、次回セッションで
+     の実施が必要。
+  - 次にすべきこと: (1) Shellツール復旧後、RS-Ops・runo.tokyo両方で
+    `cargo build`/`cargo test`を実行し今回までの変更を検証、
+    (2) `easy-web.tokyo`へのRS-Opsデプロイ(systemdサービス化+
+    nginx `location /RS-Ops/`追加)、(3) デプロイ完了後、
+    `RsGitProvider`/`AruaruLlmProvider`を実際に稼働中のRS-Git/
+    aruaru-llmインスタンスに対して実HTTPで検証(現状は未検証のまま)、
+    (4) デプロイ完了後、`runo.tokyo`の`meta_index.rs`の`RS-Ops`
+    エントリの`live_url`/`live_status`を`https://easy-web.tokyo/RS-Ops`
+    に更新。
+
 - **2026-07-22(続き3) Bitbucket/GitLab/標準Redmineを実装、AIターゲットを
   個別命名、優先度UIに正直な注記を追加**: ユーザーから「Git/課題管理
   サービスを完全に対応して」「呼び出しはClaude/Claude Code Desktop/
