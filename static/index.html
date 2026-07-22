@@ -120,6 +120,22 @@
 </section>
 
 <section>
+  <h2 data-i18n="reports_h2">Completion Reports</h2>
+  <p style="font-size:0.85rem;color:#666;" data-i18n="reports_note">Auto-recorded when the AI tool (or the human operating it) marks a ticket handled: how long it actually took vs. the expected schedule, and the self-reported completion percentage. Only English/Japanese are translated for this section so far.</p>
+  <table id="reports-table">
+    <thead><tr>
+      <th data-i18n="reports_source_th">Source</th>
+      <th data-i18n="reports_ticket_th">Ticket</th>
+      <th data-i18n="reports_target_th">AI tool</th>
+      <th data-i18n="reports_percent_th">Completion %</th>
+      <th data-i18n="reports_schedule_th">On schedule?</th>
+      <th data-i18n="reports_hours_th">Est. / Actual (h)</th>
+    </tr></thead>
+    <tbody></tbody>
+  </table>
+</section>
+
+<section>
   <h2 data-i18n="download_h2">…</h2>
   <a class="download-card" href="install.sh" download>
     <strong>Linux</strong><br><code>install.sh</code>
@@ -156,6 +172,14 @@ const I18N = {
     priority_th: "Priority (1-5 stars, 1 star = no need to work on this now)",
     priority_note: "No stars set, or exactly 1 star, both mean: no need to work on this right now.",
     ai_note: "RS-Ops cannot force-call third-party chat UIs (ChatGPT/Gemini/DeepSeek/Grok/claude.ai, etc.) — it does not hold their APIs or sessions. Support ends at generating a ready-to-paste, tool-labeled task prompt.",
+    reports_h2: "Completion Reports",
+    reports_note: "Auto-recorded when the AI tool (or the human operating it) marks a ticket handled: how long it actually took vs. the expected schedule, and the self-reported completion percentage.",
+    reports_source_th: "Source",
+    reports_ticket_th: "Ticket",
+    reports_target_th: "AI tool",
+    reports_percent_th: "Completion %",
+    reports_schedule_th: "On schedule?",
+    reports_hours_th: "Est. / Actual (h)",
     download_h2: "Download (with installer)",
   },
   ja: {
@@ -183,6 +207,14 @@ const I18N = {
     priority_th: "優先度(星1〜5、★1=今は着手不要)",
     priority_note: "星が一つも付いていないか、星一つは、今は対応しなくて良いと判断致します。",
     ai_note: "第三者チャットUI(ChatGPT/Gemini/DeepSeek/Grok/claude.ai等)へこのサービスからAPIを強制的に呼び出す機能はありません(それらのAPIやセッションを保有していないため)。ツールごとに宛先を明示したタスク依頼テキストをすぐ使える形で提示するところまでが対応範囲です。",
+    reports_h2: "完了報告",
+    reports_note: "AIツール(またはそれを操作する人間)がチケットを対応済みとマークした際に自動記録される: 期待スケジュールに対して実際どのくらいの時間がかかったか、自己申告の完成度(%)。",
+    reports_source_th: "課題管理システム",
+    reports_ticket_th: "チケット",
+    reports_target_th: "AIツール",
+    reports_percent_th: "完成度",
+    reports_schedule_th: "スケジュール通り?",
+    reports_hours_th: "見積/実績(時間)",
     download_h2: "ダウンロード(インストーラー付き)",
   },
   "zh-Hans": {
@@ -737,8 +769,23 @@ async function loadProjects() {
   }
 }
 
+async function loadCompletionReports() {
+  const res = await fetch("api/tickets/completion-reports");
+  const data = await res.json();
+  const tbody = document.querySelector("#reports-table tbody");
+  tbody.innerHTML = "";
+  for (const r of data) {
+    const tr = document.createElement("tr");
+    const scheduleText = r.on_schedule === null ? "—" : (r.on_schedule ? "✅" : "⚠️");
+    const hoursText = `${r.estimated_hours ?? "—"} / ${r.actual_hours.toFixed(2)}`;
+    tr.innerHTML = `<td>${r.source}</td><td>#${r.ticket_id}</td><td>${r.target}</td><td>${r.completion_percent}%</td><td>${scheduleText}</td><td>${hoursText}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
 setLang(localStorage.getItem("rs_ops_lang") || "hybrid");
 renderAuthState();
 loadServices();
 loadProjects();
+loadCompletionReports();
 </script>

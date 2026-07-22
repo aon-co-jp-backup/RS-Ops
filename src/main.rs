@@ -18,6 +18,7 @@ use std::sync::Arc;
 struct AppConfig {
     scan_root: PathBuf,
     rs_chiketto_url: String,
+    redmine_url: Option<String>,
     ticket_queue: Arc<TicketQueue>,
     priority_store: Arc<PriorityStore>,
     auth: Arc<AuthStore>,
@@ -267,18 +268,13 @@ fn parse_target(s: &str) -> Option<AiTarget> {
 }
 
 /// チケット自動対応機能: 「今すぐポーリング」— バックグラウンドの定期
-/// ポーリングを待たず、手動でRS-Chikettoから最新のチケットを取得し
-/// キューへ反映する。
+/// ポーリングを待たず、手動で全ソース(RS-Chiketto・設定されていれば
+/// 標準Redmine)から最新のチケットを取得しキューへ反映する。
 #[handler]
 async fn poll_tickets_now(cfg: poem::web::Data<&Arc<AppConfig>>) -> Json<serde_json::Value> {
-    let provider = RsChikettoProvider::new(cfg.rs_chiketto_url.clone());
-    match provider.list_tickets().await {
-        Ok(tickets) => {
-            let added = cfg.ticket_queue.ingest_new_tickets(&tickets, &cfg.rs_chiketto_url);
-            Json(serde_json::json!({"ok": true, "fetched": tickets.len(), "newly_queued": added}))
-        }
-        Err(e) => Json(serde_json::json!({"ok": false, "error": e.to_string()})),
-    }
+    let (fetched, added) =
+        ticket_automation::poll_once(&cfg.ticket_queue, &cfg.rs_chiketto_url, cfg.redmine_url.as_deref()).await;
+    Json(serde_json::json!({"ok": true, "fetched": fetched, "newly_queued": added}))
 }
 
 #[derive(Deserialize)]
@@ -306,8 +302,30 @@ fn pending_tasks(cfg: poem::web::Data<&Arc<AppConfig>>, Query(q): Query<PendingT
         .body(serde_json::to_string(&tasks).unwrap_or_else(|_| "[]".to_string()))
 }
 
+#[derive(Deserialize, Default)]
+struct CompletionReportBody {
+    /// 完成度(0〜100%)。呼び出し側(AIツールまたはそれを操作する人間)の
+    /// 自己申告値。省略時は100(単純な「完了マークのみ」の後方互換)。
+    #[serde(default = "default_completion_percent")]
+    completion_percent: u8,
+    #[serde(default)]
+    notes: String,
+}
+fn default_completion_percent() -> u8 {
+    100
+}
+
+/// 対応完了マーク兼、完了報告(スケジュール遵守・完成度の自動記録)。
+/// 対応したAIツール(またはそれを操作する人間)がこのAPIを呼び出すことで
+/// 記録される——外部からAIツールを強制的に呼び出して報告させる機能では
+/// ない(第三者チャットUIのAPI/セッションは保有していないため)。
 #[handler]
-fn mark_task_handled(req: &Request, cfg: poem::web::Data<&Arc<AppConfig>>, PPath((ticket_id, target)): PPath<(u64, String)>) -> poem::Response {
+fn mark_task_handled(
+    req: &Request,
+    cfg: poem::web::Data<&Arc<AppConfig>>,
+    PPath((source, ticket_id, target)): PPath<(String, u64, String)>,
+    body: poem::Result<Json<CompletionReportBody>>,
+) -> poem::Response {
     match session_role(req, &cfg) {
         Some(role) if role.can_edit() => {}
         Some(_) => return forbidden("editor or admin role required"),
@@ -318,8 +336,48 @@ fn mark_task_handled(req: &Request, cfg: poem::web::Data<&Arc<AppConfig>>, PPath
             .header("content-type", "application/json")
             .body(serde_json::json!({"ok": false, "error": "unknown target"}).to_string());
     };
-    let found = cfg.ticket_queue.mark_handled(ticket_id, target);
-    poem::Response::builder().header("content-type", "application/json").body(serde_json::json!({"ok": found}).to_string())
+    let Json(report_body) = body.unwrap_or(Json(CompletionReportBody { completion_percent: default_completion_percent(), notes: String::new() }));
+    match cfg.ticket_queue.mark_handled_with_report(&source, ticket_id, target, report_body.completion_percent, report_body.notes) {
+        Some(report) => poem::Response::builder()
+            .header("content-type", "application/json")
+            .body(serde_json::json!({"ok": true, "report": report}).to_string()),
+        None => poem::Response::builder().header("content-type", "application/json").body(serde_json::json!({"ok": false}).to_string()),
+    }
+}
+
+#[derive(Deserialize)]
+struct SetEstimateBody {
+    /// 期待される所要時間(時間単位)。
+    hours: f64,
+}
+
+/// チケットへ期待スケジュール(見積時間)を設定する。完了時に
+/// `mark_task_handled`がこの見積と実経過時間を比較し、スケジュール
+/// 通りだったかを自動判定する。
+#[handler]
+fn set_ticket_estimate(
+    req: &Request,
+    cfg: poem::web::Data<&Arc<AppConfig>>,
+    PPath((source, ticket_id)): PPath<(String, u64)>,
+    Json(body): Json<SetEstimateBody>,
+) -> poem::Response {
+    match session_role(req, &cfg) {
+        Some(role) if role.can_edit() => {}
+        Some(_) => return forbidden("editor or admin role required"),
+        None => return unauthorized("login required"),
+    }
+    let updated = cfg.ticket_queue.set_estimate(&source, ticket_id, body.hours);
+    poem::Response::builder().header("content-type", "application/json").body(serde_json::json!({"ok": true, "updated": updated}).to_string())
+}
+
+/// 全ての完了報告(スケジュール遵守・完成度%)の一覧。管理画面での
+/// 「どのくらいのスケジュールでどのくらい完成したか」の可視化に使う。
+#[handler]
+fn completion_reports(cfg: poem::web::Data<&Arc<AppConfig>>) -> poem::Response {
+    let reports = cfg.ticket_queue.completion_reports();
+    poem::Response::builder()
+        .header("content-type", "application/json")
+        .body(serde_json::to_string(&reports).unwrap_or_else(|_| "[]".to_string()))
 }
 
 #[derive(Deserialize)]
@@ -441,7 +499,9 @@ fn build_app(cfg: Arc<AppConfig>) -> impl poem::Endpoint {
         .at("/api/generate", get(generate))
         .at("/api/tickets/poll-now", post(poll_tickets_now))
         .at("/api/tickets/pending-tasks", get(pending_tasks))
-        .at("/api/tickets/:ticket_id/handled/:target", post(mark_task_handled))
+        .at("/api/tickets/completion-reports", get(completion_reports))
+        .at("/api/tickets/:source/:ticket_id/handled/:target", post(mark_task_handled))
+        .at("/api/tickets/:source/:ticket_id/estimate", post(set_ticket_estimate))
         .at("/api/auth/request-otp", post(request_otp))
         .at("/api/auth/verify-otp", post(verify_otp))
         .at("/api/auth/logout", post(logout))
@@ -458,6 +518,7 @@ async fn main() -> Result<(), std::io::Error> {
         .unwrap_or_else(|_| "F:\\runo".to_string());
     let rs_chiketto_url = std::env::var("RS_OPS_RS_CHIKETTO_URL")
         .unwrap_or_else(|_| "http://127.0.0.1:8100".to_string());
+    let redmine_url = std::env::var("RS_OPS_REDMINE_URL").ok();
     let data_dir = std::env::var("RS_OPS_DATA_DIR")
         .unwrap_or_else(|_| "data".to_string());
     let poll_interval: u64 = std::env::var("RS_OPS_TICKET_POLL_SECS")
@@ -486,6 +547,7 @@ async fn main() -> Result<(), std::io::Error> {
     let cfg = Arc::new(AppConfig {
         scan_root: PathBuf::from(scan_root),
         rs_chiketto_url: rs_chiketto_url.clone(),
+        redmine_url: redmine_url.clone(),
         ticket_queue: ticket_queue.clone(),
         priority_store,
         auth,
@@ -494,7 +556,7 @@ async fn main() -> Result<(), std::io::Error> {
         smtp,
     });
 
-    tokio::spawn(ticket_automation::run_polling_loop(ticket_queue, rs_chiketto_url, poll_interval));
+    tokio::spawn(ticket_automation::run_polling_loop(ticket_queue, rs_chiketto_url, redmine_url, poll_interval));
 
     let port: u16 = std::env::var("RS_OPS_PORT")
         .ok()
@@ -518,6 +580,7 @@ mod handler_tests {
         Arc::new(AppConfig {
             scan_root: dir.path().to_path_buf(),
             rs_chiketto_url: "http://127.0.0.1:1".to_string(),
+            redmine_url: None,
             ticket_queue: Arc::new(TicketQueue::load(dir.path().join("queue.json"))),
             priority_store: Arc::new(PriorityStore::load(dir.path().join("priorities.json"))),
             auth: Arc::new(AuthStore::default()),

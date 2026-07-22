@@ -10,15 +10,52 @@ pub struct NormalizedTicket {
     pub description: String,
     /// 元システムでの生ステータス文字列(例: "Open"/"open"等、正規化しない)。
     pub status: String,
+    /// どの課題管理システムから来たか(例: "rs-chiketto"/"redmine"/
+    /// "gitlab"/"github")。複数ソースを1つのキューへ集約する際、同じ
+    /// 数値`id`が別システムのチケットと衝突しないよう、実際の重複排除
+    /// キーは`(source, id)`の組で行う(`ticket_automation`参照)。
+    #[serde(default)]
+    pub source: String,
 }
 
 /// 新規チケットに対して自動生成されたAIタスク依頼。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PendingTask {
+    /// 元システム名(例: "rs-chiketto"/"redmine"/"gitlab"/"github")。
+    #[serde(default)]
+    pub source: String,
     pub ticket_id: u64,
     pub target: AiTarget,
     pub prompt: String,
     pub handled: bool,
+    /// タスクがキューに登録された時刻(UNIX秒)。スケジュール遵守判定の起点。
+    #[serde(default)]
+    pub created_at: i64,
+    /// 期待される所要時間(時間単位)。管理者が`POST /api/tickets/:source/:id/estimate`
+    /// で設定する任意値。未設定ならスケジュール遵守判定は行わない。
+    #[serde(default)]
+    pub estimated_hours: Option<f64>,
+}
+
+/// 対応完了時にAIが(またはこのシステムが自動的に)生成する完了報告。
+/// 「依頼完了後、スケジュール通りだったか・何%完成したか」を記録する。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompletionReport {
+    #[serde(default)]
+    pub source: String,
+    pub ticket_id: u64,
+    pub target: AiTarget,
+    /// 完成度(0〜100%)。呼び出し側が自己申告する値。
+    pub completion_percent: u8,
+    /// `estimated_hours`が設定されていた場合のみ算出される、期待
+    /// スケジュール通りに完了したかどうか(実経過時間 <= 見積時間)。
+    /// 見積が無い場合はNone(「スケジュール通りか」を判定できないため)。
+    pub on_schedule: Option<bool>,
+    pub estimated_hours: Option<f64>,
+    /// 登録から完了報告までの実経過時間(時間単位)。
+    pub actual_hours: f64,
+    pub notes: String,
+    pub reported_at: i64,
 }
 
 /// F:\runo(または任意のルート)配下でスキャンして見つかったプロジェクト。

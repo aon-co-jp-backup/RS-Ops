@@ -129,6 +129,7 @@ impl RsChikettoProvider {
                     title: t["title"].as_str().unwrap_or_default().to_string(),
                     description: t["description"].as_str().unwrap_or_default().to_string(),
                     status: t["status"].as_str().unwrap_or_default().to_string(),
+                    source: "rs-chiketto".to_string(),
                 })
             })
             .collect())
@@ -242,6 +243,7 @@ impl RedmineProvider {
                     title: t["subject"].as_str().unwrap_or_default().to_string(),
                     description: t["description"].as_str().unwrap_or_default().to_string(),
                     status: t["status"]["name"].as_str().unwrap_or_default().to_string(),
+                    source: "redmine".to_string(),
                 })
             })
             .collect())
