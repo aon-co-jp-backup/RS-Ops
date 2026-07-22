@@ -1,0 +1,122 @@
+<meta charset="utf-8">
+<title>RS-AI-DevOps</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
+  h1 { margin-bottom: 0.2rem; }
+  .subtitle { color: #666; margin-top: 0; }
+  .lang-toggle { margin: 1rem 0; }
+  .lang-toggle button { margin-right: 0.5rem; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+  th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; font-size: 0.92rem; }
+  th { background: #f5f5f5; }
+  .status-implemented { color: #146c2e; font-weight: 600; }
+  .status-planned { color: #a15c00; }
+  section { margin: 2rem 0; }
+  .download-card { display: inline-block; border: 1px solid #ddd; border-radius: 8px; padding: 1rem 1.5rem; margin-right: 1rem; text-decoration: none; color: inherit; }
+  code { background: #f0f0f0; padding: 0.1rem 0.3rem; border-radius: 3px; }
+</style>
+
+<h1>RS-AI-DevOps</h1>
+<p class="subtitle" data-i18n="subtitle">Loading…</p>
+
+<div class="lang-toggle">
+  <button onclick="setLang('ja')">日本語</button>
+  <button onclick="setLang('en')">English</button>
+</div>
+
+<section>
+  <h2 data-i18n="about_h2">…</h2>
+  <p data-i18n="about_body">…</p>
+</section>
+
+<section>
+  <h2 data-i18n="services_h2">…</h2>
+  <table id="services-table"><tbody></tbody></table>
+</section>
+
+<section>
+  <h2 data-i18n="ai_h2">…</h2>
+  <table>
+    <tbody>
+      <tr><td>Claude / Claude Code Desktop</td><td class="status-implemented">CLAUDE.md — implemented</td></tr>
+      <tr><td>Cursor</td><td class="status-implemented">.cursorrules — implemented</td></tr>
+      <tr><td>ChatGPT / Gemini / DeepSeek / Grok</td><td class="status-implemented">AGENTS.md (generic) — implemented</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2 data-i18n="projects_h2">…</h2>
+  <table id="projects-table"><tbody></tbody></table>
+</section>
+
+<section>
+  <h2 data-i18n="download_h2">…</h2>
+  <a class="download-card" href="install.sh" download>
+    <strong>Linux</strong><br><code>install.sh</code>
+  </a>
+  <a class="download-card" href="install.ps1" download>
+    <strong>Windows</strong><br><code>install.ps1</code>
+  </a>
+</section>
+
+<script>
+const I18N = {
+  ja: {
+    subtitle: "エコシステム全体マップ × AIエージェント向けコンテキスト生成 × 複数Git/課題管理サービス連携",
+    about_h2: "概要",
+    about_body: "RS-AI-DevOpsは、F:\\runo配下(またはリポジトリ全体)のプロジェクトをスキャンし、GitHub・Redmine(RS-Chiketto含む)等の複数サービスと連携しながら、Claude/Cursor/ChatGPT等のAIツールが読み込むコンテキストファイル(CLAUDE.md/.cursorrules/AGENTS.md)を自動生成するオープンソースツールです。",
+    services_h2: "対応Git/課題管理サービス",
+    ai_h2: "対応AIツール",
+    projects_h2: "検出されたプロジェクト",
+    download_h2: "ダウンロード(インストーラー付き)",
+  },
+  en: {
+    subtitle: "Ecosystem map × AI-agent context generation × multi Git/issue-tracker integration",
+    about_h2: "About",
+    about_body: "RS-AI-DevOps scans projects under F:\\runo (or any repo root), integrates with services like GitHub and Redmine (including RS-Chiketto, this ecosystem's Rust+RPoem Redmine equivalent), and auto-generates the context files (CLAUDE.md / .cursorrules / AGENTS.md) that AI coding tools such as Claude, Cursor, and ChatGPT read.",
+    services_h2: "Supported Git / issue-tracker services",
+    ai_h2: "Supported AI tools",
+    projects_h2: "Detected projects",
+    download_h2: "Download (with installer)",
+  },
+};
+
+function setLang(lang) {
+  localStorage.setItem("rs_ai_devops_lang", lang);
+  document.querySelectorAll("[data-i18n]").forEach(el => {
+    const key = el.getAttribute("data-i18n");
+    if (I18N[lang][key]) el.textContent = I18N[lang][key];
+  });
+}
+
+async function loadServices() {
+  const res = await fetch("api/services");
+  const data = await res.json();
+  const tbody = document.querySelector("#services-table tbody");
+  tbody.innerHTML = "";
+  for (const s of data.git_services) {
+    const tr = document.createElement("tr");
+    const statusClass = s.status.startsWith("implemented") ? "status-implemented" : "status-planned";
+    tr.innerHTML = `<td>${s.service}</td><td class="${statusClass}">${s.status}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+async function loadProjects() {
+  const res = await fetch("api/projects");
+  const data = await res.json();
+  const tbody = document.querySelector("#projects-table tbody");
+  tbody.innerHTML = "";
+  for (const p of data) {
+    const tr = document.createElement("tr");
+    const link = p.github_url ? `<a href="${p.github_url}" target="_blank">${p.name}</a>` : p.name;
+    tr.innerHTML = `<td>${link}</td><td>${p.description || ""}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+setLang(localStorage.getItem("rs_ai_devops_lang") || "ja");
+loadServices();
+loadProjects();
+</script>
