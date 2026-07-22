@@ -57,6 +57,30 @@ Web UI(`/`)の「ダウンロード」節から、Linux向け`install.sh`・Wind
   までの対応。
 - コード署名・deb/msiパッケージングは未実装。
 
+## ロードマップ(2026-07-22追記、ユーザー構想・未実装)
+
+以下はユーザーから示された今後の構想であり、**現時点ではいずれも未実装**
+(設計・優先度の記録のみ)。今後の開発対象として明記する:
+
+- **新ハードウェア導入対応**: サーバー/エッジ機器の新ハードウェアを
+  エコシステムに組み込む際の手順・互換性チェックリストの自動生成。
+- **ファームウェア対応**: 各ハードウェアのファームウェアバージョン管理・
+  更新手順の追跡。
+- **一部パーツ入れ替え対応**: サーバー機器の部分的な部品交換(ディスク・
+  メモリ・NIC等)の際の作業手順・影響範囲の自動チェック。
+- **セキュリティ新ハードウェア導入対応**: TPM・HSM・セキュリティキー等、
+  セキュリティ関連の新ハードウェア導入時の手順・対応状況の管理。
+- **WEBアプリ開発全体のロードマップ自動生成機能**: `runo-scanner`が検出
+  したプロジェクト群のHANDOFF「次にすべきこと」を横断的に集計し、
+  エコシステム全体としての開発ロードマップを自動生成する機能。
+- **Redmine/RS-Chiketto連携の拡張(チケット管理対応)**: 現状はヘルス
+  チェック・到達性確認のみだが、実際のチケット作成・更新・一覧表示まで
+  対応する課題管理連携へ拡張する(標準Redmine REST API・RS-Chiketto
+  双方を同じインターフェースで扱う設計を維持する)。
+
+これらは全て「未着手」であり、承認待ちの提案ではなく次に着手すべき実装
+対象として記録している(このエコシステムの既存運用ルールに準拠)。
+
 ---
 
 ## English
@@ -100,3 +124,31 @@ RS_AI_DEVOPS_SCAN_ROOT=/path/to/your/repos ./target/release/rs-ai-devops
 - ChatGPT/Gemini/DeepSeek/Grok support means generating a generic template
   usable as a system prompt — not a per-vendor API integration.
 - No code signing or deb/msi packaging yet.
+
+### Roadmap (added 2026-07-22, user vision, not yet implemented)
+
+The following were proposed by the user as future direction; **none of these
+are implemented yet** — this section records the design intent and priority
+only:
+
+- **New hardware onboarding support**: auto-generated compatibility
+  checklists / procedures for introducing new server or edge hardware into
+  the ecosystem.
+- **Firmware support**: tracking firmware versions and update procedures
+  across hardware.
+- **Partial parts-replacement support**: procedures and blast-radius checks
+  for partial component swaps (disks, memory, NICs, etc.) on server
+  hardware.
+- **Security-hardware onboarding support**: tracking TPMs, HSMs, security
+  keys, and other security-related hardware introductions.
+- **Auto-generated web-app development roadmap**: aggregate the "next
+  steps" from every project's HANDOFF (as detected by `runo-scanner`) into
+  a single, ecosystem-wide development roadmap.
+- **Expanded Redmine/RS-Chiketto integration (ticket management)**:
+  currently limited to health-check/reachability; extend to real ticket
+  creation, updates, and listing (keeping standard Redmine REST API and
+  RS-Chiketto behind the same interface).
+
+All of the above are "not yet started" — per this ecosystem's existing
+operational policy, that means they are recorded as the next implementation
+targets, not proposals awaiting approval.

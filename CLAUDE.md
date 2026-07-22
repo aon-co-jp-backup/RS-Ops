@@ -43,6 +43,26 @@ RS-Sync/RS-Git等と同じ方針: `poem`クレートを直接利用する単純�
 - `static/index.html` — 日英2言語UI(相対パスAPI呼び出し、`/rs-git`の
   絶対パスハードコード事故の教訓を踏襲)。
 
+## ロードマップ(2026-07-22追記、ユーザー構想・未実装、日英併記README参照)
+
+ユーザーから追加で以下の構想が示された(いずれも**現時点で未実装**、
+次に着手すべき実装対象として記録):
+
+1. 新ハードウェア導入対応(New hardware onboarding support)
+2. ファームウェア対応(Firmware support)
+3. 一部パーツ入れ替え対応(Partial parts-replacement support)
+4. セキュリティの新ハードウェア導入対応(Security-hardware onboarding
+   support)
+5. WEBアプリ開発全体のロードマップ自動生成機能(各プロジェクトの
+   HANDOFF「次にすべきこと」を横断集計してエコシステム全体の開発
+   ロードマップを自動生成する機能。Auto-generated web-app development
+   roadmap)
+6. Redmine/RS-Chiketto連携の拡張——現状のヘルスチェックのみから、実際の
+   チケット作成・更新・一覧表示までの課題管理連携へ拡張(Expanded
+   Redmine/RS-Chiketto integration for real ticket management)
+
+詳細な日英併記の説明は`README.md`の「ロードマップ」節を参照。
+
 ## HANDOFF
 
 - **2026-07-22 初版実装**: ユーザーから直接「エコシステム全体マップの
