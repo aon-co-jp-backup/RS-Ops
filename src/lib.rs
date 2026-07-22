@@ -1,3 +1,6 @@
+pub mod accounts;
+pub mod auth;
+pub mod mail;
 pub mod model;
 pub mod priority;
 pub mod provider;

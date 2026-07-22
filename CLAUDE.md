@@ -1,8 +1,9 @@
-# 開発方針＆開発環境ルール(RS-AI-DevOps)
+# 開発方針＆開発環境ルール(RS-Ops)
 
 作業ドライブは`F:\runo`。この節は[`open-raid-z`](https://github.com/aon-co-jp/open-raid-z)の
 `CLAUDE.md`を正本とし、各プロジェクトへコピーして同期する方針に準じる。
-GitHubリポジトリ: [aon-co-jp/RS-AI-DevOps](https://github.com/aon-co-jp/RS-AI-DevOps)。
+GitHubリポジトリ: [aon-co-jp/RS-Ops](https://github.com/aon-co-jp/RS-Ops)
+(旧名`RS-AI-DevOps`、2026-07-22に`RS-Ops`へ改名)。
 
 > ⚠️ **正直な開示(2026-07-22、初版)**: GitHub連携・RS-Chiketto連携のみ
 > 実機(実HTTP)で検証済み。Bitbucket/Gitbucket/GitLab/標準Redmineは

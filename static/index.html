@@ -5,7 +5,7 @@
   h1 { margin-bottom: 0.2rem; }
   .subtitle { color: #666; margin-top: 0; }
   .lang-toggle { margin: 1rem 0; }
-  .lang-toggle button { margin-right: 0.5rem; }
+  .lang-toggle select { font-size: 0.95rem; padding: 0.3rem; }
   table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
   th, td { border: 1px solid #ddd; padding: 0.5rem; text-align: left; font-size: 0.92rem; }
   th { background: #f5f5f5; }
@@ -14,19 +14,78 @@
   section { margin: 2rem 0; }
   .download-card { display: inline-block; border: 1px solid #ddd; border-radius: 8px; padding: 1rem 1.5rem; margin-right: 1rem; text-decoration: none; color: inherit; }
   code { background: #f0f0f0; padding: 0.1rem 0.3rem; border-radius: 3px; }
+  .auth-box { border: 1px solid #ddd; border-radius: 8px; padding: 1rem; background: #fafafa; }
+  .auth-box input, .auth-box select { padding: 0.4rem; margin-right: 0.5rem; }
+  .auth-box button { padding: 0.4rem 0.8rem; margin-right: 0.5rem; }
+  .auth-error { color: #a11; font-size: 0.9rem; }
+  .role-badge { font-size: 0.8rem; padding: 0.1rem 0.4rem; border-radius: 4px; background: #eef; }
+  #admin-panel { display: none; }
+  .acc-row { display: flex; gap: 0.5rem; align-items: center; margin: 0.3rem 0; }
 </style>
 
 <h1>RS-Ops</h1>
 <p class="subtitle" data-i18n="subtitle">Loading…</p>
 
 <div class="lang-toggle">
-  <button onclick="setLang('ja')">日本語</button>
-  <button onclick="setLang('en')">English</button>
+  <select id="lang-select" onchange="setLang(this.value)">
+    <option value="hybrid">English (日本語)</option>
+    <option value="en">English</option>
+    <option value="ja">日本語</option>
+    <option value="zh-Hans">简体中文</option>
+    <option value="zh-Hant">繁體中文</option>
+    <option value="ko">한국어</option>
+    <option value="es">Español</option>
+    <option value="fr">Français</option>
+    <option value="de">Deutsch</option>
+    <option value="pt">Português</option>
+    <option value="ru">Русский</option>
+    <option value="ar">العربية</option>
+    <option value="hi">हिन्दी</option>
+    <option value="id">Bahasa Indonesia</option>
+    <option value="vi">Tiếng Việt</option>
+    <option value="th">ไทย</option>
+  </select>
 </div>
 
 <section>
   <h2 data-i18n="about_h2">…</h2>
   <p data-i18n="about_body">…</p>
+</section>
+
+<section>
+  <h2 data-i18n="login_h2">…</h2>
+  <div class="auth-box">
+    <div id="login-form">
+      <input id="login-email" type="email" placeholder="you@example.com">
+      <button onclick="requestOtp()" data-i18n="send_code_btn"></button>
+      <br><br>
+      <input id="login-code" type="text" placeholder="000000" maxlength="6" style="display:none">
+      <button id="verify-btn" onclick="verifyOtp()" data-i18n="login_btn" style="display:none"></button>
+    </div>
+    <div id="login-status" style="display:none">
+      <span data-i18n="logged_in_as"></span> <strong id="login-email-display"></strong>
+      <span class="role-badge" id="login-role-display"></span>
+      <button onclick="logout()" data-i18n="logout_btn"></button>
+    </div>
+    <p class="auth-error" id="auth-error"></p>
+    <p style="font-size:0.85rem;color:#666;" data-i18n="login_required_note"></p>
+  </div>
+</section>
+
+<section id="admin-panel">
+  <h2 data-i18n="admin_h2">…</h2>
+  <table>
+    <thead><tr><th data-i18n="accounts_email_th"></th><th data-i18n="accounts_role_th"></th><th data-i18n="accounts_action_th"></th></tr></thead>
+    <tbody id="accounts-table"></tbody>
+  </table>
+  <div class="acc-row">
+    <input id="new-member-email" type="email" placeholder="member@example.com">
+    <select id="new-member-role">
+      <option value="viewer" data-i18n="role_viewer"></option>
+      <option value="editor" data-i18n="role_editor"></option>
+    </select>
+    <button onclick="addMember()" data-i18n="add_member_btn"></button>
+  </div>
 </section>
 
 <section>
@@ -72,22 +131,25 @@
 
 <script>
 const I18N = {
-  ja: {
-    subtitle: "エコシステム全体マップ × AIエージェント向けコンテキスト生成 × 複数Git/課題管理サービス連携",
-    about_h2: "概要",
-    about_body: "RS-Opsは、F:\\runo配下(またはリポジトリ全体)のプロジェクトをスキャンし、GitHub・Redmine(RS-Chiketto含む)等の複数サービスと連携しながら、Claude/Cursor/ChatGPT等のAIツールが読み込むコンテキストファイル(CLAUDE.md/.cursorrules/AGENTS.md)を自動生成するオープンソースツールです。",
-    services_h2: "対応Git/課題管理サービス",
-    ai_h2: "対応AIツール",
-    projects_h2: "検出されたプロジェクト",
-    priority_th: "優先度(星1〜5、★1=今は着手不要)",
-    priority_note: "星が一つも付いていないか、星一つは、今は対応しなくて良いと判断致します。",
-    ai_note: "第三者チャットUI(ChatGPT/Gemini/DeepSeek/Grok/claude.ai等)へこのサービスからAPIを強制的に呼び出す機能はありません(それらのAPIやセッションを保有していないため)。ツールごとに宛先を明示したタスク依頼テキストをすぐ使える形で提示するところまでが対応範囲です。",
-    download_h2: "ダウンロード(インストーラー付き)",
-  },
   en: {
     subtitle: "Ecosystem map × AI-agent context generation × multi Git/issue-tracker integration",
     about_h2: "About",
     about_body: "RS-Ops scans projects under F:\\runo (or any repo root), integrates with services like GitHub and Redmine (including RS-Chiketto, this ecosystem's Rust+RPoem Redmine equivalent), and auto-generates the context files (CLAUDE.md / .cursorrules / AGENTS.md) that AI coding tools such as Claude, Cursor, and ChatGPT read.",
+    login_h2: "Login",
+    send_code_btn: "Send code",
+    login_btn: "Log in",
+    logout_btn: "Log out",
+    logged_in_as: "Logged in as",
+    login_required_note: "Login is required to change priority stars or manage tickets. This protects the tool for team/worldwide use — anyone can view, only logged-in Editor/Admin accounts can edit.",
+    admin_h2: "Team members (admin only)",
+    accounts_email_th: "Email",
+    accounts_role_th: "Role",
+    accounts_action_th: "Action",
+    role_viewer: "Viewer (read-only)",
+    role_editor: "Editor (can edit)",
+    role_admin: "Admin",
+    add_member_btn: "Add / update",
+    remove_btn: "Remove",
     services_h2: "Supported Git / issue-tracker services",
     ai_h2: "Supported AI tools",
     projects_h2: "Detected projects",
@@ -96,14 +158,409 @@ const I18N = {
     ai_note: "RS-Ops cannot force-call third-party chat UIs (ChatGPT/Gemini/DeepSeek/Grok/claude.ai, etc.) — it does not hold their APIs or sessions. Support ends at generating a ready-to-paste, tool-labeled task prompt.",
     download_h2: "Download (with installer)",
   },
+  ja: {
+    subtitle: "エコシステム全体マップ × AIエージェント向けコンテキスト生成 × 複数Git/課題管理サービス連携",
+    about_h2: "概要",
+    about_body: "RS-Opsは、F:\\runo配下(またはリポジトリ全体)のプロジェクトをスキャンし、GitHub・Redmine(RS-Chiketto含む)等の複数サービスと連携しながら、Claude/Cursor/ChatGPT等のAIツールが読み込むコンテキストファイル(CLAUDE.md/.cursorrules/AGENTS.md)を自動生成するオープンソースツールです。",
+    login_h2: "ログイン",
+    send_code_btn: "コード送信",
+    login_btn: "ログイン",
+    logout_btn: "ログアウト",
+    logged_in_as: "ログイン中:",
+    login_required_note: "優先度の星やチケット対応の変更にはログインが必要です。世界中のチームで安全に運用するため、閲覧は誰でも可能ですが、編集はログイン済みのEditor/Admin権限のみ許可されます。",
+    admin_h2: "チームメンバー(管理者のみ)",
+    accounts_email_th: "メールアドレス",
+    accounts_role_th: "権限",
+    accounts_action_th: "操作",
+    role_viewer: "Viewer(閲覧のみ)",
+    role_editor: "Editor(編集可)",
+    role_admin: "Admin",
+    add_member_btn: "追加・更新",
+    remove_btn: "削除",
+    services_h2: "対応Git/課題管理サービス",
+    ai_h2: "対応AIツール",
+    projects_h2: "検出されたプロジェクト",
+    priority_th: "優先度(星1〜5、★1=今は着手不要)",
+    priority_note: "星が一つも付いていないか、星一つは、今は対応しなくて良いと判断致します。",
+    ai_note: "第三者チャットUI(ChatGPT/Gemini/DeepSeek/Grok/claude.ai等)へこのサービスからAPIを強制的に呼び出す機能はありません(それらのAPIやセッションを保有していないため)。ツールごとに宛先を明示したタスク依頼テキストをすぐ使える形で提示するところまでが対応範囲です。",
+    download_h2: "ダウンロード(インストーラー付き)",
+  },
+  "zh-Hans": {
+    subtitle: "生态系统全景图 × AI 代理上下文生成 × 多 Git/工单系统集成",
+    about_h2: "简介",
+    about_body: "RS-Ops 扫描 F:\\runo 下(或任意仓库根目录)的项目,与 GitHub、Redmine(包括 RS-Chiketto,本生态系统自研的 Rust+RPoem Redmine 等效实现)等多种服务集成,并自动生成 Claude、Cursor、ChatGPT 等 AI 编程工具读取的上下文文件(CLAUDE.md / .cursorrules / AGENTS.md)。",
+    login_h2: "登录",
+    send_code_btn: "发送验证码",
+    login_btn: "登录",
+    logout_btn: "退出登录",
+    logged_in_as: "已登录:",
+    login_required_note: "修改优先级星级或处理工单需要登录。为便于全球团队安全协作,任何人均可查看,但只有已登录的 Editor/Admin 账户才能编辑。",
+    admin_h2: "团队成员(仅管理员)",
+    accounts_email_th: "邮箱",
+    accounts_role_th: "角色",
+    accounts_action_th: "操作",
+    role_viewer: "Viewer(只读)",
+    role_editor: "Editor(可编辑)",
+    role_admin: "Admin",
+    add_member_btn: "添加/更新",
+    remove_btn: "移除",
+    services_h2: "支持的 Git / 工单系统",
+    ai_h2: "支持的 AI 工具",
+    projects_h2: "检测到的项目",
+    priority_th: "优先级(1-5 星,1 星 = 暂不需要处理)",
+    priority_note: "未设置星级或恰好 1 星,均表示:目前不需要处理此项。",
+    ai_note: "RS-Ops 无法强制调用第三方聊天界面(ChatGPT/Gemini/DeepSeek/Grok/claude.ai 等)——它并不持有这些服务的 API 或会话。支持范围仅限于生成可直接粘贴、标明目标工具的任务提示文本。",
+    download_h2: "下载(含安装脚本)",
+  },
+  "zh-Hant": {
+    subtitle: "生態系統全景圖 × AI 代理上下文生成 × 多 Git/工單系統整合",
+    about_h2: "簡介",
+    about_body: "RS-Ops 掃描 F:\\runo 下(或任意儲存庫根目錄)的專案,與 GitHub、Redmine(包括 RS-Chiketto,本生態系統自研的 Rust+RPoem Redmine 等效實作)等多種服務整合,並自動產生 Claude、Cursor、ChatGPT 等 AI 程式設計工具讀取的上下文檔案(CLAUDE.md / .cursorrules / AGENTS.md)。",
+    login_h2: "登入",
+    send_code_btn: "傳送驗證碼",
+    login_btn: "登入",
+    logout_btn: "登出",
+    logged_in_as: "已登入:",
+    login_required_note: "修改優先級星級或處理工單需要登入。為便於全球團隊安全協作,任何人均可檢視,但只有已登入的 Editor/Admin 帳戶才能編輯。",
+    admin_h2: "團隊成員(僅管理員)",
+    accounts_email_th: "電子郵件",
+    accounts_role_th: "角色",
+    accounts_action_th: "操作",
+    role_viewer: "Viewer(僅檢視)",
+    role_editor: "Editor(可編輯)",
+    role_admin: "Admin",
+    add_member_btn: "新增/更新",
+    remove_btn: "移除",
+    services_h2: "支援的 Git / 工單系統",
+    ai_h2: "支援的 AI 工具",
+    projects_h2: "偵測到的專案",
+    priority_th: "優先級(1-5 星,1 星 = 暫不需要處理)",
+    priority_note: "未設定星級或恰好 1 星,均表示:目前不需要處理此項。",
+    ai_note: "RS-Ops 無法強制呼叫第三方聊天介面(ChatGPT/Gemini/DeepSeek/Grok/claude.ai 等)——它並不持有這些服務的 API 或工作階段。支援範圍僅限於產生可直接貼上、標明目標工具的任務提示文字。",
+    download_h2: "下載(含安裝腳本)",
+  },
+  ko: {
+    subtitle: "생태계 전체 지도 × AI 에이전트 컨텍스트 생성 × 다중 Git/이슈트래커 통합",
+    about_h2: "소개",
+    about_body: "RS-Ops는 F:\\runo(또는 임의의 저장소 루트) 하위 프로젝트를 스캔하고, GitHub·Redmine(이 생태계의 자체 Rust+RPoem Redmine 대응품인 RS-Chiketto 포함) 등 여러 서비스와 연동하며, Claude·Cursor·ChatGPT 같은 AI 코딩 도구가 읽는 컨텍스트 파일(CLAUDE.md / .cursorrules / AGENTS.md)을 자동 생성하는 오픈소스 도구입니다.",
+    login_h2: "로그인",
+    send_code_btn: "인증코드 전송",
+    login_btn: "로그인",
+    logout_btn: "로그아웃",
+    logged_in_as: "로그인:",
+    login_required_note: "우선순위 별점이나 티켓 상태를 변경하려면 로그인이 필요합니다. 전 세계 팀이 안전하게 사용할 수 있도록 누구나 조회할 수 있지만, 편집은 로그인한 Editor/Admin 계정만 가능합니다.",
+    admin_h2: "팀 멤버(관리자 전용)",
+    accounts_email_th: "이메일",
+    accounts_role_th: "권한",
+    accounts_action_th: "작업",
+    role_viewer: "Viewer(읽기 전용)",
+    role_editor: "Editor(편집 가능)",
+    role_admin: "Admin",
+    add_member_btn: "추가/업데이트",
+    remove_btn: "제거",
+    services_h2: "지원하는 Git / 이슈트래커 서비스",
+    ai_h2: "지원하는 AI 도구",
+    projects_h2: "감지된 프로젝트",
+    priority_th: "우선순위(1-5점, 1점 = 지금은 작업하지 않아도 됨)",
+    priority_note: "별점이 없거나 정확히 1점인 경우, 모두 지금은 작업할 필요가 없다는 의미입니다.",
+    ai_note: "RS-Ops는 제3자 채팅 UI(ChatGPT/Gemini/DeepSeek/Grok/claude.ai 등)를 강제로 호출할 수 없습니다 — 해당 서비스의 API나 세션을 보유하고 있지 않습니다. 지원 범위는 바로 붙여넣을 수 있는, 도구명이 명시된 작업 지시 텍스트를 생성하는 것까지입니다.",
+    download_h2: "다운로드(설치 스크립트 포함)",
+  },
+  es: {
+    subtitle: "Mapa del ecosistema × generación de contexto para agentes de IA × integración con múltiples servicios Git/de tickets",
+    about_h2: "Acerca de",
+    about_body: "RS-Ops escanea los proyectos bajo F:\\runo (o cualquier raíz de repositorio), se integra con servicios como GitHub y Redmine (incluido RS-Chiketto, el equivalente Rust+RPoem de Redmine de este ecosistema), y genera automáticamente los archivos de contexto (CLAUDE.md / .cursorrules / AGENTS.md) que leen herramientas de IA como Claude, Cursor y ChatGPT.",
+    login_h2: "Iniciar sesión",
+    send_code_btn: "Enviar código",
+    login_btn: "Iniciar sesión",
+    logout_btn: "Cerrar sesión",
+    logged_in_as: "Sesión iniciada como",
+    login_required_note: "Se requiere iniciar sesión para cambiar las estrellas de prioridad o gestionar tickets. Esto protege la herramienta para uso en equipo a nivel mundial: cualquiera puede ver, pero solo las cuentas Editor/Admin conectadas pueden editar.",
+    admin_h2: "Miembros del equipo (solo admin)",
+    accounts_email_th: "Correo electrónico",
+    accounts_role_th: "Rol",
+    accounts_action_th: "Acción",
+    role_viewer: "Viewer (solo lectura)",
+    role_editor: "Editor (puede editar)",
+    role_admin: "Admin",
+    add_member_btn: "Añadir / actualizar",
+    remove_btn: "Eliminar",
+    services_h2: "Servicios Git / de tickets compatibles",
+    ai_h2: "Herramientas de IA compatibles",
+    projects_h2: "Proyectos detectados",
+    priority_th: "Prioridad (1-5 estrellas, 1 estrella = no es necesario trabajar en esto ahora)",
+    priority_note: "Sin estrellas o exactamente 1 estrella significan lo mismo: no es necesario trabajar en esto ahora.",
+    ai_note: "RS-Ops no puede invocar forzosamente interfaces de chat de terceros (ChatGPT/Gemini/DeepSeek/Grok/claude.ai, etc.) — no posee sus API ni sesiones. El soporte termina en generar un texto de tarea listo para pegar, etiquetado por herramienta.",
+    download_h2: "Descargar (con instalador)",
+  },
+  fr: {
+    subtitle: "Carte de l'écosystème × génération de contexte pour agents IA × intégration multi Git/gestion de tickets",
+    about_h2: "À propos",
+    about_body: "RS-Ops analyse les projets sous F:\\runo (ou toute racine de dépôt), s'intègre à des services comme GitHub et Redmine (y compris RS-Chiketto, l'équivalent Rust+RPoem de Redmine de cet écosystème), et génère automatiquement les fichiers de contexte (CLAUDE.md / .cursorrules / AGENTS.md) lus par des outils d'IA comme Claude, Cursor et ChatGPT.",
+    login_h2: "Connexion",
+    send_code_btn: "Envoyer le code",
+    login_btn: "Se connecter",
+    logout_btn: "Se déconnecter",
+    logged_in_as: "Connecté en tant que",
+    login_required_note: "La connexion est requise pour modifier les étoiles de priorité ou gérer les tickets. Cela protège l'outil pour un usage en équipe mondiale : tout le monde peut consulter, mais seuls les comptes Editor/Admin connectés peuvent modifier.",
+    admin_h2: "Membres de l'équipe (admin uniquement)",
+    accounts_email_th: "E-mail",
+    accounts_role_th: "Rôle",
+    accounts_action_th: "Action",
+    role_viewer: "Viewer (lecture seule)",
+    role_editor: "Editor (peut modifier)",
+    role_admin: "Admin",
+    add_member_btn: "Ajouter / mettre à jour",
+    remove_btn: "Retirer",
+    services_h2: "Services Git / de tickets pris en charge",
+    ai_h2: "Outils d'IA pris en charge",
+    projects_h2: "Projets détectés",
+    priority_th: "Priorité (1 à 5 étoiles, 1 étoile = pas besoin d'y travailler maintenant)",
+    priority_note: "Aucune étoile définie, ou exactement 1 étoile, signifient la même chose : pas besoin d'y travailler maintenant.",
+    ai_note: "RS-Ops ne peut pas forcer l'appel d'interfaces de chat tierces (ChatGPT/Gemini/DeepSeek/Grok/claude.ai, etc.) — il ne détient ni leurs API ni leurs sessions. La prise en charge se limite à générer un texte de tâche prêt à copier, étiqueté par outil.",
+    download_h2: "Télécharger (avec installateur)",
+  },
+  de: {
+    subtitle: "Ökosystemkarte × KI-Agenten-Kontexterzeugung × Integration mehrerer Git/Ticketsysteme",
+    about_h2: "Über",
+    about_body: "RS-Ops durchsucht Projekte unter F:\\runo (oder einem beliebigen Repository-Root), integriert sich mit Diensten wie GitHub und Redmine (einschließlich RS-Chiketto, dem Rust+RPoem-Äquivalent von Redmine in diesem Ökosystem) und generiert automatisch die Kontextdateien (CLAUDE.md / .cursorrules / AGENTS.md), die KI-Coding-Tools wie Claude, Cursor und ChatGPT lesen.",
+    login_h2: "Anmelden",
+    send_code_btn: "Code senden",
+    login_btn: "Anmelden",
+    logout_btn: "Abmelden",
+    logged_in_as: "Angemeldet als",
+    login_required_note: "Zum Ändern der Prioritätssterne oder zur Ticketverwaltung ist eine Anmeldung erforderlich. Dies schützt das Tool für die weltweite Teamnutzung – jeder kann ansehen, aber nur angemeldete Editor/Admin-Konten können bearbeiten.",
+    admin_h2: "Teammitglieder (nur Admin)",
+    accounts_email_th: "E-Mail",
+    accounts_role_th: "Rolle",
+    accounts_action_th: "Aktion",
+    role_viewer: "Viewer (nur lesen)",
+    role_editor: "Editor (kann bearbeiten)",
+    role_admin: "Admin",
+    add_member_btn: "Hinzufügen / aktualisieren",
+    remove_btn: "Entfernen",
+    services_h2: "Unterstützte Git-/Ticketsystem-Dienste",
+    ai_h2: "Unterstützte KI-Tools",
+    projects_h2: "Erkannte Projekte",
+    priority_th: "Priorität (1-5 Sterne, 1 Stern = muss jetzt nicht bearbeitet werden)",
+    priority_note: "Keine Sterne oder genau 1 Stern bedeuten beide: muss jetzt nicht bearbeitet werden.",
+    ai_note: "RS-Ops kann Drittanbieter-Chat-UIs (ChatGPT/Gemini/DeepSeek/Grok/claude.ai usw.) nicht zwangsweise aufrufen – es besitzt weder deren APIs noch Sitzungen. Die Unterstützung endet bei der Erzeugung eines einfügefertigen, werkzeugbeschrifteten Aufgabentexts.",
+    download_h2: "Herunterladen (mit Installer)",
+  },
+  pt: {
+    subtitle: "Mapa do ecossistema × geração de contexto para agentes de IA × integração com múltiplos serviços Git/de tickets",
+    about_h2: "Sobre",
+    about_body: "O RS-Ops varre os projetos em F:\\runo (ou qualquer raiz de repositório), integra-se a serviços como GitHub e Redmine (incluindo o RS-Chiketto, o equivalente Rust+RPoem do Redmine deste ecossistema) e gera automaticamente os arquivos de contexto (CLAUDE.md / .cursorrules / AGENTS.md) lidos por ferramentas de IA como Claude, Cursor e ChatGPT.",
+    login_h2: "Entrar",
+    send_code_btn: "Enviar código",
+    login_btn: "Entrar",
+    logout_btn: "Sair",
+    logged_in_as: "Sessão iniciada como",
+    login_required_note: "É necessário fazer login para alterar as estrelas de prioridade ou gerenciar tickets. Isso protege a ferramenta para uso em equipe global — qualquer pessoa pode visualizar, mas apenas contas Editor/Admin conectadas podem editar.",
+    admin_h2: "Membros da equipe (somente admin)",
+    accounts_email_th: "E-mail",
+    accounts_role_th: "Função",
+    accounts_action_th: "Ação",
+    role_viewer: "Viewer (somente leitura)",
+    role_editor: "Editor (pode editar)",
+    role_admin: "Admin",
+    add_member_btn: "Adicionar / atualizar",
+    remove_btn: "Remover",
+    services_h2: "Serviços Git / de tickets suportados",
+    ai_h2: "Ferramentas de IA suportadas",
+    projects_h2: "Projetos detectados",
+    priority_th: "Prioridade (1-5 estrelas, 1 estrela = não precisa trabalhar nisso agora)",
+    priority_note: "Nenhuma estrela definida, ou exatamente 1 estrela, significam o mesmo: não é necessário trabalhar nisso agora.",
+    ai_note: "O RS-Ops não pode forçar a chamada de interfaces de chat de terceiros (ChatGPT/Gemini/DeepSeek/Grok/claude.ai etc.) — ele não possui as APIs ou sessões desses serviços. O suporte se limita a gerar um texto de tarefa pronto para colar, identificado por ferramenta.",
+    download_h2: "Baixar (com instalador)",
+  },
+  ru: {
+    subtitle: "Карта экосистемы × генерация контекста для ИИ-агентов × интеграция с несколькими Git/системами тикетов",
+    about_h2: "О сервисе",
+    about_body: "RS-Ops сканирует проекты в каталоге F:\\runo (или любом корне репозиториев), интегрируется с такими сервисами, как GitHub и Redmine (включая RS-Chiketto — Rust+RPoem-аналог Redmine в этой экосистеме), и автоматически генерирует контекстные файлы (CLAUDE.md / .cursorrules / AGENTS.md), которые читают ИИ-инструменты, такие как Claude, Cursor и ChatGPT.",
+    login_h2: "Вход",
+    send_code_btn: "Отправить код",
+    login_btn: "Войти",
+    logout_btn: "Выйти",
+    logged_in_as: "Вы вошли как",
+    login_required_note: "Для изменения звёзд приоритета или управления тикетами требуется вход. Это защищает инструмент при командной работе по всему миру — просматривать может любой, а редактировать могут только вошедшие учётные записи Editor/Admin.",
+    admin_h2: "Участники команды (только админ)",
+    accounts_email_th: "Email",
+    accounts_role_th: "Роль",
+    accounts_action_th: "Действие",
+    role_viewer: "Viewer (только просмотр)",
+    role_editor: "Editor (может редактировать)",
+    role_admin: "Admin",
+    add_member_btn: "Добавить / обновить",
+    remove_btn: "Удалить",
+    services_h2: "Поддерживаемые Git / системы тикетов",
+    ai_h2: "Поддерживаемые ИИ-инструменты",
+    projects_h2: "Обнаруженные проекты",
+    priority_th: "Приоритет (1-5 звёзд, 1 звезда = сейчас заниматься этим не нужно)",
+    priority_note: "Отсутствие звёзд или ровно 1 звезда означают одно и то же: заниматься этим сейчас не нужно.",
+    ai_note: "RS-Ops не может принудительно вызывать сторонние чат-интерфейсы (ChatGPT/Gemini/DeepSeek/Grok/claude.ai и т.д.) — у него нет их API или сессий. Поддержка ограничивается генерацией готового к вставке текста задачи с указанием инструмента.",
+    download_h2: "Скачать (с установщиком)",
+  },
+  ar: {
+    subtitle: "خريطة النظام البيئي × توليد سياق لوكلاء الذكاء الاصطناعي × التكامل مع أنظمة Git/التذاكر المتعددة",
+    about_h2: "حول",
+    about_body: "يقوم RS-Ops بفحص المشاريع الموجودة تحت F:\\runo (أو أي مستودع جذري)، ويتكامل مع خدمات مثل GitHub وRedmine (بما في ذلك RS-Chiketto، النسخة المكافئة لـ Redmine المبنية بـ Rust+RPoem في هذا النظام البيئي)، ويولّد تلقائيًا ملفات السياق (CLAUDE.md / .cursorrules / AGENTS.md) التي تقرأها أدوات الذكاء الاصطناعي مثل Claude وCursor وChatGPT.",
+    login_h2: "تسجيل الدخول",
+    send_code_btn: "إرسال الرمز",
+    login_btn: "تسجيل الدخول",
+    logout_btn: "تسجيل الخروج",
+    logged_in_as: "تم تسجيل الدخول باسم",
+    login_required_note: "يلزم تسجيل الدخول لتغيير نجوم الأولوية أو إدارة التذاكر. هذا يحمي الأداة للاستخدام الجماعي حول العالم — يمكن لأي شخص العرض، ولكن فقط حسابات Editor/Admin المسجلة يمكنها التعديل.",
+    admin_h2: "أعضاء الفريق (للمسؤول فقط)",
+    accounts_email_th: "البريد الإلكتروني",
+    accounts_role_th: "الدور",
+    accounts_action_th: "إجراء",
+    role_viewer: "Viewer (قراءة فقط)",
+    role_editor: "Editor (يمكنه التعديل)",
+    role_admin: "Admin",
+    add_member_btn: "إضافة / تحديث",
+    remove_btn: "إزالة",
+    services_h2: "خدمات Git / التذاكر المدعومة",
+    ai_h2: "أدوات الذكاء الاصطناعي المدعومة",
+    projects_h2: "المشاريع المكتشفة",
+    priority_th: "الأولوية (1-5 نجوم، نجمة واحدة = لا حاجة للعمل على هذا الآن)",
+    priority_note: "عدم تحديد أي نجوم، أو نجمة واحدة بالضبط، يعنيان الشيء نفسه: لا حاجة للعمل على هذا الآن.",
+    ai_note: "لا يمكن لـ RS-Ops استدعاء واجهات الدردشة الخارجية (ChatGPT/Gemini/DeepSeek/Grok/claude.ai وغيرها) بالقوة — فهو لا يملك واجهات برمجة التطبيقات (API) أو الجلسات الخاصة بها. يقتصر الدعم على توليد نص مهمة جاهز للّصق ومحدد باسم الأداة.",
+    download_h2: "تنزيل (مع أداة التثبيت)",
+  },
+  hi: {
+    subtitle: "इकोसिस्टम मानचित्र × AI एजेंट कॉन्टेक्स्ट जनरेशन × कई Git/टिकट सेवाओं का एकीकरण",
+    about_h2: "परिचय",
+    about_body: "RS-Ops, F:\\runo (या किसी भी रिपॉज़िटरी रूट) के अंतर्गत प्रोजेक्ट्स को स्कैन करता है, GitHub और Redmine (इस इकोसिस्टम के Rust+RPoem Redmine समकक्ष RS-Chiketto सहित) जैसी सेवाओं के साथ एकीकृत होता है, और Claude, Cursor, ChatGPT जैसे AI कोडिंग टूल्स द्वारा पढ़ी जाने वाली कॉन्टेक्स्ट फ़ाइलें (CLAUDE.md / .cursorrules / AGENTS.md) स्वतः उत्पन्न करता है।",
+    login_h2: "लॉगिन",
+    send_code_btn: "कोड भेजें",
+    login_btn: "लॉगिन करें",
+    logout_btn: "लॉगआउट",
+    logged_in_as: "लॉगिन किया गया:",
+    login_required_note: "प्राथमिकता स्टार बदलने या टिकट प्रबंधित करने के लिए लॉगिन आवश्यक है। इससे यह टूल विश्वभर की टीम के लिए सुरक्षित रहता है — कोई भी देख सकता है, लेकिन केवल लॉगिन किए हुए Editor/Admin खाते ही संपादित कर सकते हैं।",
+    admin_h2: "टीम सदस्य (केवल एडमिन)",
+    accounts_email_th: "ईमेल",
+    accounts_role_th: "भूमिका",
+    accounts_action_th: "कार्रवाई",
+    role_viewer: "Viewer (केवल देखने के लिए)",
+    role_editor: "Editor (संपादित कर सकते हैं)",
+    role_admin: "Admin",
+    add_member_btn: "जोड़ें / अपडेट करें",
+    remove_btn: "हटाएं",
+    services_h2: "समर्थित Git / टिकट सेवाएं",
+    ai_h2: "समर्थित AI टूल्स",
+    projects_h2: "पाए गए प्रोजेक्ट्स",
+    priority_th: "प्राथमिकता (1-5 स्टार, 1 स्टार = अभी इस पर काम करने की आवश्यकता नहीं)",
+    priority_note: "कोई स्टार सेट न होना, या ठीक 1 स्टार होना, दोनों का अर्थ है: अभी इस पर काम करने की आवश्यकता नहीं है।",
+    ai_note: "RS-Ops तीसरे पक्ष के चैट UI (ChatGPT/Gemini/DeepSeek/Grok/claude.ai आदि) को जबरन कॉल नहीं कर सकता — इसके पास उनकी API या सेशन नहीं हैं। समर्थन केवल टूल-लेबल वाला, चिपकाने के लिए तैयार टास्क टेक्स्ट बनाने तक सीमित है।",
+    download_h2: "डाउनलोड (इंस्टॉलर सहित)",
+  },
+  id: {
+    subtitle: "Peta ekosistem × pembuatan konteks untuk agen AI × integrasi berbagai layanan Git/tiket",
+    about_h2: "Tentang",
+    about_body: "RS-Ops memindai proyek di bawah F:\\runo (atau root repositori apa pun), berintegrasi dengan layanan seperti GitHub dan Redmine (termasuk RS-Chiketto, setara Redmine berbasis Rust+RPoem dari ekosistem ini), dan secara otomatis menghasilkan berkas konteks (CLAUDE.md / .cursorrules / AGENTS.md) yang dibaca oleh alat pengkodean AI seperti Claude, Cursor, dan ChatGPT.",
+    login_h2: "Masuk",
+    send_code_btn: "Kirim kode",
+    login_btn: "Masuk",
+    logout_btn: "Keluar",
+    logged_in_as: "Masuk sebagai",
+    login_required_note: "Login diperlukan untuk mengubah bintang prioritas atau mengelola tiket. Ini melindungi alat ini untuk penggunaan tim di seluruh dunia — siapa pun dapat melihat, tetapi hanya akun Editor/Admin yang masuk yang dapat mengedit.",
+    admin_h2: "Anggota tim (khusus admin)",
+    accounts_email_th: "Email",
+    accounts_role_th: "Peran",
+    accounts_action_th: "Aksi",
+    role_viewer: "Viewer (hanya baca)",
+    role_editor: "Editor (dapat mengedit)",
+    role_admin: "Admin",
+    add_member_btn: "Tambah / perbarui",
+    remove_btn: "Hapus",
+    services_h2: "Layanan Git / tiket yang didukung",
+    ai_h2: "Alat AI yang didukung",
+    projects_h2: "Proyek yang terdeteksi",
+    priority_th: "Prioritas (1-5 bintang, 1 bintang = tidak perlu dikerjakan sekarang)",
+    priority_note: "Tidak ada bintang yang diset, atau tepat 1 bintang, keduanya berarti: tidak perlu dikerjakan sekarang.",
+    ai_note: "RS-Ops tidak dapat memaksa memanggil antarmuka obrolan pihak ketiga (ChatGPT/Gemini/DeepSeek/Grok/claude.ai, dll.) — ia tidak memiliki API atau sesi mereka. Dukungan berhenti pada pembuatan teks tugas siap tempel yang berlabel alat.",
+    download_h2: "Unduh (dengan installer)",
+  },
+  vi: {
+    subtitle: "Bản đồ hệ sinh thái × tạo ngữ cảnh cho tác nhân AI × tích hợp nhiều dịch vụ Git/hệ thống ticket",
+    about_h2: "Giới thiệu",
+    about_body: "RS-Ops quét các dự án trong F:\\runo (hoặc thư mục gốc repo bất kỳ), tích hợp với các dịch vụ như GitHub và Redmine (bao gồm RS-Chiketto, phiên bản tương đương Redmine bằng Rust+RPoem của hệ sinh thái này), và tự động tạo các tệp ngữ cảnh (CLAUDE.md / .cursorrules / AGENTS.md) mà các công cụ AI như Claude, Cursor, ChatGPT đọc.",
+    login_h2: "Đăng nhập",
+    send_code_btn: "Gửi mã",
+    login_btn: "Đăng nhập",
+    logout_btn: "Đăng xuất",
+    logged_in_as: "Đã đăng nhập với",
+    login_required_note: "Cần đăng nhập để thay đổi số sao ưu tiên hoặc quản lý ticket. Điều này bảo vệ công cụ khi dùng cho nhóm toàn cầu — ai cũng có thể xem, nhưng chỉ tài khoản Editor/Admin đã đăng nhập mới có thể chỉnh sửa.",
+    admin_h2: "Thành viên nhóm (chỉ admin)",
+    accounts_email_th: "Email",
+    accounts_role_th: "Vai trò",
+    accounts_action_th: "Hành động",
+    role_viewer: "Viewer (chỉ xem)",
+    role_editor: "Editor (có thể sửa)",
+    role_admin: "Admin",
+    add_member_btn: "Thêm / cập nhật",
+    remove_btn: "Xóa",
+    services_h2: "Dịch vụ Git / ticket được hỗ trợ",
+    ai_h2: "Công cụ AI được hỗ trợ",
+    projects_h2: "Dự án được phát hiện",
+    priority_th: "Độ ưu tiên (1-5 sao, 1 sao = chưa cần làm ngay bây giờ)",
+    priority_note: "Không có sao nào được đặt, hoặc đúng 1 sao, đều có nghĩa: hiện chưa cần làm việc này.",
+    ai_note: "RS-Ops không thể buộc gọi các giao diện chat của bên thứ ba (ChatGPT/Gemini/DeepSeek/Grok/claude.ai, v.v.) — nó không giữ API hay session của các dịch vụ đó. Hỗ trợ chỉ dừng ở việc tạo văn bản nhiệm vụ sẵn sàng để dán, có ghi rõ công cụ đích.",
+    download_h2: "Tải xuống (kèm trình cài đặt)",
+  },
+  th: {
+    subtitle: "แผนที่ระบบนิเวศ × การสร้างบริบทสำหรับเอเจนต์ AI × การเชื่อมต่อกับบริการ Git/ระบบทิกเก็ตหลายแบบ",
+    about_h2: "เกี่ยวกับ",
+    about_body: "RS-Ops สแกนโปรเจกต์ภายใต้ F:\\runo (หรือรูทของรีโพสิทอรีใดๆ) เชื่อมต่อกับบริการอย่าง GitHub และ Redmine (รวมถึง RS-Chiketto ซึ่งเป็น Redmine เวอร์ชัน Rust+RPoem ของระบบนิเวศนี้) และสร้างไฟล์บริบท (CLAUDE.md / .cursorrules / AGENTS.md) ที่เครื่องมือ AI อย่าง Claude, Cursor, ChatGPT ใช้อ่านโดยอัตโนมัติ",
+    login_h2: "เข้าสู่ระบบ",
+    send_code_btn: "ส่งรหัส",
+    login_btn: "เข้าสู่ระบบ",
+    logout_btn: "ออกจากระบบ",
+    logged_in_as: "เข้าสู่ระบบในชื่อ",
+    login_required_note: "ต้องเข้าสู่ระบบเพื่อเปลี่ยนดาวความสำคัญหรือจัดการทิกเก็ต วิธีนี้ช่วยปกป้องเครื่องมือสำหรับการใช้งานเป็นทีมทั่วโลก — ทุกคนสามารถดูได้ แต่มีเพียงบัญชี Editor/Admin ที่เข้าสู่ระบบแล้วเท่านั้นที่แก้ไขได้",
+    admin_h2: "สมาชิกทีม (สำหรับผู้ดูแลระบบเท่านั้น)",
+    accounts_email_th: "อีเมล",
+    accounts_role_th: "บทบาท",
+    accounts_action_th: "การดำเนินการ",
+    role_viewer: "Viewer (ดูได้อย่างเดียว)",
+    role_editor: "Editor (แก้ไขได้)",
+    role_admin: "Admin",
+    add_member_btn: "เพิ่ม / อัปเดต",
+    remove_btn: "ลบ",
+    services_h2: "บริการ Git / ระบบทิกเก็ตที่รองรับ",
+    ai_h2: "เครื่องมือ AI ที่รองรับ",
+    projects_h2: "โปรเจกต์ที่ตรวจพบ",
+    priority_th: "ความสำคัญ (1-5 ดาว, 1 ดาว = ยังไม่ต้องดำเนินการตอนนี้)",
+    priority_note: "ไม่มีดาวเลย หรือมีดาวเดียว ทั้งสองแบบหมายความว่า: ยังไม่ต้องดำเนินการตอนนี้",
+    ai_note: "RS-Ops ไม่สามารถบังคับเรียก UI แชทของบุคคลที่สาม (ChatGPT/Gemini/DeepSeek/Grok/claude.ai ฯลฯ) ได้ — ไม่มี API หรือเซสชันของบริการเหล่านั้น การสนับสนุนจำกัดอยู่ที่การสร้างข้อความงานที่พร้อมวางและระบุชื่อเครื่องมือ",
+    download_h2: "ดาวน์โหลด (พร้อมตัวติดตั้ง)",
+  },
 };
+const RTL_LANGS = new Set(["ar"]);
+
+function applyLang(lang, dict) {
+  document.querySelectorAll("[data-i18n]").forEach(el => {
+    const key = el.getAttribute("data-i18n");
+    if (dict[key]) el.textContent = dict[key];
+  });
+}
 
 function setLang(lang) {
   localStorage.setItem("rs_ops_lang", lang);
-  document.querySelectorAll("[data-i18n]").forEach(el => {
-    const key = el.getAttribute("data-i18n");
-    if (I18N[lang][key]) el.textContent = I18N[lang][key];
-  });
+  document.getElementById("lang-select").value = lang;
+  document.documentElement.setAttribute("dir", RTL_LANGS.has(lang) ? "rtl" : "ltr");
+  if (lang === "hybrid") {
+    document.querySelectorAll("[data-i18n]").forEach(el => {
+      const key = el.getAttribute("data-i18n");
+      const en = I18N.en[key], ja = I18N.ja[key];
+      if (en && ja) el.textContent = `${en} (${ja})`;
+      else if (en) el.textContent = en;
+    });
+    return;
+  }
+  const dict = I18N[lang] || I18N.en;
+  applyLang(lang, dict);
 }
 
 async function loadServices() {
@@ -119,12 +576,129 @@ async function loadServices() {
   }
 }
 
+// --- Auth (OTP login, matching RS-Git's design) ---
+
+function authToken() { return localStorage.getItem("rs_ops_token"); }
+function authEmail() { return localStorage.getItem("rs_ops_email"); }
+function authRole() { return localStorage.getItem("rs_ops_role"); }
+
+function authorizedFetch(url, opts = {}) {
+  const token = authToken();
+  const headers = Object.assign({}, opts.headers || {});
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  return fetch(url, Object.assign({}, opts, { headers }));
+}
+
+function showAuthError(msg) {
+  document.getElementById("auth-error").textContent = msg || "";
+}
+
+async function requestOtp() {
+  showAuthError("");
+  const email = document.getElementById("login-email").value.trim();
+  if (!email) return;
+  const res = await fetch("api/auth/request-otp", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  const data = await res.json();
+  if (!data.ok) {
+    showAuthError(data.error || "failed to send code");
+    return;
+  }
+  document.getElementById("login-code").style.display = "";
+  document.getElementById("verify-btn").style.display = "";
+}
+
+async function verifyOtp() {
+  showAuthError("");
+  const email = document.getElementById("login-email").value.trim();
+  const code = document.getElementById("login-code").value.trim();
+  const res = await fetch("api/auth/verify-otp", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email, code }),
+  });
+  const data = await res.json();
+  if (!data.ok) {
+    showAuthError(data.error || "login failed");
+    return;
+  }
+  localStorage.setItem("rs_ops_token", data.token);
+  localStorage.setItem("rs_ops_email", data.email);
+  localStorage.setItem("rs_ops_role", data.role);
+  renderAuthState();
+}
+
+async function logout() {
+  await authorizedFetch("api/auth/logout", { method: "POST" });
+  localStorage.removeItem("rs_ops_token");
+  localStorage.removeItem("rs_ops_email");
+  localStorage.removeItem("rs_ops_role");
+  renderAuthState();
+}
+
+function renderAuthState() {
+  const loggedIn = !!authToken();
+  document.getElementById("login-form").style.display = loggedIn ? "none" : "";
+  document.getElementById("login-status").style.display = loggedIn ? "" : "none";
+  document.getElementById("admin-panel").style.display = authRole() === "admin" ? "" : "none";
+  if (loggedIn) {
+    document.getElementById("login-email-display").textContent = authEmail();
+    document.getElementById("login-role-display").textContent = authRole();
+  }
+  if (authRole() === "admin") loadAccounts();
+}
+
+async function loadAccounts() {
+  const res = await authorizedFetch("api/accounts");
+  if (!res.ok) return;
+  const data = await res.json();
+  const tbody = document.getElementById("accounts-table");
+  tbody.innerHTML = "";
+  for (const acc of data.accounts) {
+    const tr = document.createElement("tr");
+    const removeBtn = acc.role === "admin" ? "" : `<button onclick="removeMember('${acc.email}')" data-i18n-inline="remove_btn">Remove</button>`;
+    tr.innerHTML = `<td>${acc.email}</td><td>${acc.role}</td><td>${removeBtn}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+async function addMember() {
+  const email = document.getElementById("new-member-email").value.trim();
+  const role = document.getElementById("new-member-role").value;
+  if (!email) return;
+  await authorizedFetch("api/accounts", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email, role }),
+  });
+  document.getElementById("new-member-email").value = "";
+  loadAccounts();
+}
+
+async function removeMember(email) {
+  await authorizedFetch(`api/accounts/${encodeURIComponent(email)}`, { method: "DELETE" });
+  loadAccounts();
+}
+
+// --- Priority stars ---
+
 async function setPriority(key, stars) {
-  await fetch("api/priorities", {
+  const res = await authorizedFetch("api/priorities", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ key, stars }),
   });
+  if (res.status === 401) {
+    showAuthError("Login required to edit priority. / 編集にはログインが必要です。");
+    return;
+  }
+  if (res.status === 403) {
+    showAuthError("Editor or Admin role required. / Editor以上の権限が必要です。");
+    return;
+  }
   loadProjects();
 }
 
@@ -137,7 +711,7 @@ function starsCell(p) {
     const star = document.createElement("a");
     star.href = "javascript:void(0)";
     star.textContent = i <= current ? "★" : "☆";
-    star.title = i === 1 ? "1 = 今は開発などをしなくて良い / not urgent" : String(i);
+    star.title = i === 1 ? "1 = not urgent / 今は開発などをしなくて良い" : String(i);
     star.addEventListener("click", () => setPriority(key, i));
     span.appendChild(star);
   }
@@ -163,7 +737,8 @@ async function loadProjects() {
   }
 }
 
-setLang(localStorage.getItem("rs_ops_lang") || "ja");
+setLang(localStorage.getItem("rs_ops_lang") || "hybrid");
+renderAuthState();
 loadServices();
 loadProjects();
 </script>

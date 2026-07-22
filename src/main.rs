@@ -1,3 +1,6 @@
+use rs_ops::accounts::{AccountStore, Role};
+use rs_ops::auth::{AuthStore, RequestOtpOutcome};
+use rs_ops::mail::{self, SmtpConfig};
 use rs_ops::model::{AiTarget, ProjectEntry};
 use rs_ops::priority::{self, PriorityStore};
 use rs_ops::provider::{
@@ -7,7 +10,7 @@ use rs_ops::scanner;
 use rs_ops::templates::generate_template;
 use rs_ops::ticket_automation::{self, TicketQueue};
 
-use poem::{get, handler, listener::TcpListener, post, web::Json, web::Path as PPath, web::Query, EndpointExt, Route, Server};
+use poem::{get, handler, listener::TcpListener, post, web::Json, web::Path as PPath, web::Query, EndpointExt, Request, Route, Server};
 use serde::Deserialize;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -17,6 +20,38 @@ struct AppConfig {
     rs_chiketto_url: String,
     ticket_queue: Arc<TicketQueue>,
     priority_store: Arc<PriorityStore>,
+    auth: Arc<AuthStore>,
+    accounts: Arc<AccountStore>,
+    admin_email: String,
+    smtp: Option<SmtpConfig>,
+}
+
+/// `Authorization: Bearer <token>`からログイン中のメールアドレスを
+/// 特定する(RS-Gitの`session_identity`と同じ方式、gitプロトコルを
+/// 持たないRS-OpsではBasic認証は不要なためBearerのみ対応)。
+fn session_identity(req: &Request, cfg: &AppConfig) -> Option<String> {
+    let header = req.header(poem::http::header::AUTHORIZATION)?;
+    let token = header.strip_prefix("Bearer ")?;
+    cfg.auth.session_email(token)
+}
+
+fn session_role(req: &Request, cfg: &AppConfig) -> Option<Role> {
+    let email = session_identity(req, cfg)?;
+    cfg.accounts.role_of(&email)
+}
+
+fn unauthorized(msg: &str) -> poem::Response {
+    poem::Response::builder()
+        .status(poem::http::StatusCode::UNAUTHORIZED)
+        .header("content-type", "application/json")
+        .body(serde_json::json!({"ok": false, "error": msg}).to_string())
+}
+
+fn forbidden(msg: &str) -> poem::Response {
+    poem::Response::builder()
+        .status(poem::http::StatusCode::FORBIDDEN)
+        .header("content-type", "application/json")
+        .body(serde_json::json!({"ok": false, "error": msg}).to_string())
 }
 
 #[handler]
@@ -65,9 +100,16 @@ struct SetPriorityBody {
     stars: u8,
 }
 
-/// リポジトリ/URLに対する優先度(星1〜5)を設定する。
+/// リポジトリ/URLに対する優先度(星1〜5)を設定する。ログイン済みかつ
+/// `Editor`以上のロールが必要(誰でも書き換えられる状態を防ぐ、
+/// チーム運用の権限管理システムの一部)。
 #[handler]
-async fn set_priority(cfg: poem::web::Data<&Arc<AppConfig>>, Json(body): Json<SetPriorityBody>) -> poem::Response {
+async fn set_priority(req: &Request, cfg: poem::web::Data<&Arc<AppConfig>>, Json(body): Json<SetPriorityBody>) -> poem::Response {
+    match session_role(req, &cfg) {
+        Some(role) if role.can_edit() => {}
+        Some(_) => return forbidden("editor or admin role required"),
+        None => return unauthorized("login required"),
+    }
     match cfg.priority_store.set(&body.key, body.stars) {
         Ok(()) => poem::Response::builder()
             .header("content-type", "application/json")
@@ -265,12 +307,120 @@ fn pending_tasks(cfg: poem::web::Data<&Arc<AppConfig>>, Query(q): Query<PendingT
 }
 
 #[handler]
-fn mark_task_handled(cfg: poem::web::Data<&Arc<AppConfig>>, PPath((ticket_id, target)): PPath<(u64, String)>) -> Json<serde_json::Value> {
+fn mark_task_handled(req: &Request, cfg: poem::web::Data<&Arc<AppConfig>>, PPath((ticket_id, target)): PPath<(u64, String)>) -> poem::Response {
+    match session_role(req, &cfg) {
+        Some(role) if role.can_edit() => {}
+        Some(_) => return forbidden("editor or admin role required"),
+        None => return unauthorized("login required"),
+    }
     let Some(target) = parse_target(&target) else {
-        return Json(serde_json::json!({"ok": false, "error": "unknown target"}));
+        return poem::Response::builder()
+            .header("content-type", "application/json")
+            .body(serde_json::json!({"ok": false, "error": "unknown target"}).to_string());
     };
     let found = cfg.ticket_queue.mark_handled(ticket_id, target);
-    Json(serde_json::json!({"ok": found}))
+    poem::Response::builder().header("content-type", "application/json").body(serde_json::json!({"ok": found}).to_string())
+}
+
+#[derive(Deserialize)]
+struct RequestOtpBody {
+    email: String,
+}
+
+/// ログインの入口。管理者メール、または管理者が事前に`Role`を割り当てた
+/// メンバーのみOTPを受け取れる(未登録メールへは何もせず、登録済みか
+/// どうかをこの応答から推測されないよう常に同じ`{"ok": true}`を返す
+/// ——ただし実際にはメールは送らない、というenumeration対策)。
+#[handler]
+async fn request_otp(cfg: poem::web::Data<&Arc<AppConfig>>, Json(body): Json<RequestOtpBody>) -> Json<serde_json::Value> {
+    let is_known = body.email == cfg.admin_email || cfg.accounts.role_of(&body.email).is_some();
+    if !is_known {
+        return Json(serde_json::json!({"ok": true}));
+    }
+    let RequestOtpOutcome::Issued(code) = cfg.auth.request_otp(&body.email);
+    match &cfg.smtp {
+        Some(smtp) => match mail::send_otp(smtp.clone(), body.email.clone(), code).await {
+            Ok(()) => Json(serde_json::json!({"ok": true})),
+            Err(e) => Json(serde_json::json!({"ok": false, "error": e.to_string()})),
+        },
+        None => Json(serde_json::json!({"ok": false, "error": "server SMTP is not configured"})),
+    }
+}
+
+#[derive(Deserialize)]
+struct VerifyOtpBody {
+    email: String,
+    code: String,
+}
+
+#[handler]
+fn verify_otp(cfg: poem::web::Data<&Arc<AppConfig>>, Json(body): Json<VerifyOtpBody>) -> poem::Response {
+    match cfg.auth.consume_otp(&body.email, &body.code) {
+        Ok(()) => {
+            let token = cfg.auth.create_session(&body.email);
+            let role = if body.email == cfg.admin_email { Role::Admin } else { cfg.accounts.role_of(&body.email).unwrap_or(Role::Viewer) };
+            poem::Response::builder()
+                .header("content-type", "application/json")
+                .body(serde_json::json!({"ok": true, "token": token, "email": body.email, "role": role}).to_string())
+        }
+        Err(e) => poem::Response::builder()
+            .status(poem::http::StatusCode::BAD_REQUEST)
+            .header("content-type", "application/json")
+            .body(serde_json::json!({"ok": false, "error": e.message()}).to_string()),
+    }
+}
+
+#[handler]
+fn logout(req: &Request, cfg: poem::web::Data<&Arc<AppConfig>>) -> Json<serde_json::Value> {
+    if let Some(header) = req.header(poem::http::header::AUTHORIZATION) {
+        if let Some(token) = header.strip_prefix("Bearer ") {
+            cfg.auth.logout(token);
+        }
+    }
+    Json(serde_json::json!({"ok": true}))
+}
+
+/// 管理者のみ: 登録メンバー一覧(管理者自身も含む)。
+#[handler]
+fn list_accounts(req: &Request, cfg: poem::web::Data<&Arc<AppConfig>>) -> poem::Response {
+    if session_role(req, &cfg) != Some(Role::Admin) {
+        return unauthorized("admin login required");
+    }
+    let list: Vec<_> = cfg.accounts.list().into_iter().map(|(email, role)| serde_json::json!({"email": email, "role": role})).collect();
+    poem::Response::builder().header("content-type", "application/json").body(serde_json::json!({"ok": true, "accounts": list}).to_string())
+}
+
+#[derive(Deserialize)]
+struct SetAccountRoleBody {
+    email: String,
+    role: String,
+}
+
+/// 管理者のみ: メンバーを登録/ロール変更する(未登録メールを指定すると
+/// そのまま新規登録になる)。
+#[handler]
+fn set_account_role(req: &Request, cfg: poem::web::Data<&Arc<AppConfig>>, Json(body): Json<SetAccountRoleBody>) -> poem::Response {
+    if session_role(req, &cfg) != Some(Role::Admin) {
+        return unauthorized("admin login required");
+    }
+    let Some(role) = Role::parse(&body.role) else {
+        return poem::Response::builder()
+            .status(poem::http::StatusCode::BAD_REQUEST)
+            .header("content-type", "application/json")
+            .body(serde_json::json!({"ok": false, "error": "role must be one of: viewer|editor|admin"}).to_string());
+    };
+    cfg.accounts.set_role(&body.email, role);
+    poem::Response::builder().header("content-type", "application/json").body(serde_json::json!({"ok": true}).to_string())
+}
+
+/// 管理者のみ: メンバーの権限を剥奪する。
+#[handler]
+fn remove_account(req: &Request, cfg: poem::web::Data<&Arc<AppConfig>>, PPath(email): PPath<String>) -> poem::Response {
+    if session_role(req, &cfg) != Some(Role::Admin) {
+        return unauthorized("admin login required");
+    }
+    let removed = cfg.accounts.remove(&email);
+    poem::Response::builder().header("content-type", "application/json").body(serde_json::json!({"ok": removed}).to_string())
 }
 
 fn build_app(cfg: Arc<AppConfig>) -> impl poem::Endpoint {
@@ -292,6 +442,11 @@ fn build_app(cfg: Arc<AppConfig>) -> impl poem::Endpoint {
         .at("/api/tickets/poll-now", post(poll_tickets_now))
         .at("/api/tickets/pending-tasks", get(pending_tasks))
         .at("/api/tickets/:ticket_id/handled/:target", post(mark_task_handled))
+        .at("/api/auth/request-otp", post(request_otp))
+        .at("/api/auth/verify-otp", post(verify_otp))
+        .at("/api/auth/logout", post(logout))
+        .at("/api/accounts", get(list_accounts).post(set_account_role))
+        .at("/api/accounts/:email", poem::delete(remove_account))
         .data(cfg)
 }
 
@@ -316,11 +471,27 @@ async fn main() -> Result<(), std::io::Error> {
     let priority_path = priority::default_priority_path(std::path::Path::new(&data_dir));
     let priority_store = Arc::new(PriorityStore::load(priority_path));
 
+    let admin_email = std::env::var("RS_OPS_ADMIN_EMAIL").unwrap_or_default();
+    let accounts_path = std::path::Path::new(&data_dir).join("accounts.json");
+    let accounts = Arc::new(AccountStore::load(accounts_path, admin_email.clone()));
+    let auth = Arc::new(AuthStore::default());
+    let smtp = SmtpConfig::from_env();
+    if admin_email.is_empty() {
+        tracing::warn!("RS_OPS_ADMIN_EMAIL is not set — no one can log in as admin");
+    }
+    if smtp.is_none() {
+        tracing::warn!("RS_OPS_SMTP_* is not fully configured — OTP emails cannot be sent");
+    }
+
     let cfg = Arc::new(AppConfig {
         scan_root: PathBuf::from(scan_root),
         rs_chiketto_url: rs_chiketto_url.clone(),
         ticket_queue: ticket_queue.clone(),
         priority_store,
+        auth,
+        accounts,
+        admin_email,
+        smtp,
     });
 
     tokio::spawn(ticket_automation::run_polling_loop(ticket_queue, rs_chiketto_url, poll_interval));
@@ -335,4 +506,109 @@ async fn main() -> Result<(), std::io::Error> {
     Server::new(TcpListener::bind(("0.0.0.0", port)))
         .run(app)
         .await
+}
+
+#[cfg(test)]
+mod handler_tests {
+    use super::*;
+    use poem::test::TestClient;
+
+    fn test_cfg() -> Arc<AppConfig> {
+        let dir = tempfile::tempdir().unwrap();
+        Arc::new(AppConfig {
+            scan_root: dir.path().to_path_buf(),
+            rs_chiketto_url: "http://127.0.0.1:1".to_string(),
+            ticket_queue: Arc::new(TicketQueue::load(dir.path().join("queue.json"))),
+            priority_store: Arc::new(PriorityStore::load(dir.path().join("priorities.json"))),
+            auth: Arc::new(AuthStore::default()),
+            accounts: Arc::new(AccountStore::load(dir.path().join("accounts.json"), "admin@example.com")),
+            admin_email: "admin@example.com".to_string(),
+            smtp: None,
+        })
+    }
+
+    #[tokio::test]
+    async fn set_priority_without_login_is_401() {
+        let cfg = test_cfg();
+        let client = TestClient::new(build_app(cfg));
+        let resp = client.post("/api/priorities").body_json(&serde_json::json!({"key": "x", "stars": 3})).send().await;
+        resp.assert_status(poem::http::StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn set_priority_as_admin_session_succeeds() {
+        let cfg = test_cfg();
+        let token = cfg.auth.create_session("admin@example.com");
+        let client = TestClient::new(build_app(cfg));
+        let resp = client
+            .post("/api/priorities")
+            .header("Authorization", format!("Bearer {token}"))
+            .body_json(&serde_json::json!({"key": "x", "stars": 3}))
+            .send()
+            .await;
+        resp.assert_status_is_ok();
+    }
+
+    #[tokio::test]
+    async fn set_priority_as_viewer_role_is_403() {
+        let cfg = test_cfg();
+        cfg.accounts.set_role("viewer@example.com", Role::Viewer);
+        let token = cfg.auth.create_session("viewer@example.com");
+        let client = TestClient::new(build_app(cfg));
+        let resp = client
+            .post("/api/priorities")
+            .header("Authorization", format!("Bearer {token}"))
+            .body_json(&serde_json::json!({"key": "x", "stars": 3}))
+            .send()
+            .await;
+        resp.assert_status(poem::http::StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn set_priority_as_editor_role_succeeds() {
+        let cfg = test_cfg();
+        cfg.accounts.set_role("editor@example.com", Role::Editor);
+        let token = cfg.auth.create_session("editor@example.com");
+        let client = TestClient::new(build_app(cfg));
+        let resp = client
+            .post("/api/priorities")
+            .header("Authorization", format!("Bearer {token}"))
+            .body_json(&serde_json::json!({"key": "x", "stars": 3}))
+            .send()
+            .await;
+        resp.assert_status_is_ok();
+    }
+
+    #[tokio::test]
+    async fn accounts_management_requires_admin_not_just_any_login() {
+        let cfg = test_cfg();
+        cfg.accounts.set_role("editor@example.com", Role::Editor);
+        let editor_token = cfg.auth.create_session("editor@example.com");
+        let admin_token = cfg.auth.create_session("admin@example.com");
+        let client = TestClient::new(build_app(cfg));
+
+        let resp = client.get("/api/accounts").header("Authorization", format!("Bearer {editor_token}")).send().await;
+        resp.assert_status(poem::http::StatusCode::UNAUTHORIZED);
+
+        let resp = client.get("/api/accounts").header("Authorization", format!("Bearer {admin_token}")).send().await;
+        resp.assert_status_is_ok();
+    }
+
+    #[tokio::test]
+    async fn admin_can_register_and_remove_a_member() {
+        let cfg = test_cfg();
+        let admin_token = cfg.auth.create_session("admin@example.com");
+        let client = TestClient::new(build_app(cfg));
+
+        let resp = client
+            .post("/api/accounts")
+            .header("Authorization", format!("Bearer {admin_token}"))
+            .body_json(&serde_json::json!({"email": "new@example.com", "role": "editor"}))
+            .send()
+            .await;
+        resp.assert_status_is_ok();
+
+        let resp = client.delete("/api/accounts/new@example.com").header("Authorization", format!("Bearer {admin_token}")).send().await;
+        resp.assert_status_is_ok();
+    }
 }
