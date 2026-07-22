@@ -1,5 +1,26 @@
 use serde::{Deserialize, Serialize};
 
+/// 課題管理システム(RS-Chiketto/標準Redmine)から取得したチケット1件。
+/// RS-Chikettoの`Ticket`と標準Redmineの`Issue`、フィールド名は異なるが
+/// 意味的に対応するものだけをここに正規化する。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NormalizedTicket {
+    pub id: u64,
+    pub title: String,
+    pub description: String,
+    /// 元システムでの生ステータス文字列(例: "Open"/"open"等、正規化しない)。
+    pub status: String,
+}
+
+/// 新規チケットに対して自動生成されたAIタスク依頼。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PendingTask {
+    pub ticket_id: u64,
+    pub target: AiTarget,
+    pub prompt: String,
+    pub handled: bool,
+}
+
 /// F:\runo(または任意のルート)配下でスキャンして見つかったプロジェクト。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectEntry {

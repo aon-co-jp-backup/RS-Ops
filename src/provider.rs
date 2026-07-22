@@ -1,4 +1,4 @@
-use crate::model::GitService;
+use crate::model::{GitService, NormalizedTicket};
 use anyhow::{bail, Result};
 use serde::{Deserialize, Serialize};
 
@@ -104,6 +104,30 @@ impl RsChikettoProvider {
         let url = format!("{}/api/tickets", self.base_url.trim_end_matches('/'));
         let resp = self.client.get(&url).send().await?;
         Ok(resp.status().as_u16())
+    }
+
+    /// 実際にチケット一覧を取得し正規化する(未ログインでも閲覧可能な
+    /// 範囲のチケットのみ返る——RS-Chikettoの`access.rs`によるフィルタ
+    /// 済み結果。管理者権限が必要なチケットまでは取得できないが、
+    /// チケット自動対応機能の第一歩としては十分な範囲)。
+    pub async fn list_tickets(&self) -> Result<Vec<NormalizedTicket>> {
+        let url = format!("{}/api/tickets", self.base_url.trim_end_matches('/'));
+        let resp = self.client.get(&url).send().await?;
+        if !resp.status().is_success() {
+            bail!("RS-Chiketto ticket list returned {}", resp.status());
+        }
+        let raw: Vec<serde_json::Value> = resp.json().await?;
+        Ok(raw
+            .into_iter()
+            .filter_map(|t| {
+                Some(NormalizedTicket {
+                    id: t["id"].as_u64()?,
+                    title: t["title"].as_str().unwrap_or_default().to_string(),
+                    description: t["description"].as_str().unwrap_or_default().to_string(),
+                    status: t["status"].as_str().unwrap_or_default().to_string(),
+                })
+            })
+            .collect())
     }
 }
 
