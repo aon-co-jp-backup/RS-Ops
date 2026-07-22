@@ -65,6 +65,37 @@ RS-Sync/RS-Git等と同じ方針: `poem`クレートを直接利用する単純�
 
 ## HANDOFF
 
+- **2026-07-22(続き) チケット自動対応機能を実装、および設計意図の表現を
+  ユーザー指摘により訂正**:
+  1. `src/ticket_automation.rs`新設: RS-Chikettoを定期ポーリング
+     (既定120秒、`POST /api/tickets/poll-now`で即時実行も可)し、
+     未対応(Closed以外・未処理)チケットをClaude/Cursor/汎用AI向けの
+     タスク依頼プロンプトへ変換してキュー(JSON永続化)へ登録する。
+     `GET /api/tickets/pending-tasks?target=...`・
+     `POST /api/tickets/:id/handled/:target`を追加。
+  2. **表現の訂正(ユーザー指摘、2026-07-22)**: 当初「ChatGPT/Gemini/
+     DeepSeek/Grokのような第三者チャットUIを強制的に呼び出せないのが
+     制約」という説明をしたが、これは設計意図を正しく表していない
+     という指摘を受けた。正しくは: **RS-Chiketto/Redmineのチケット
+     情報をAIツールが実際に読み込む形(CLAUDE.md/.cursorrules/
+     AGENTS.md相当)へ変換して提示することで、Claude Code Desktop等の
+     AIツール自身が全体を把握し対応できるようにする**、という設計を
+     再現しているのであり、これは制約ではなく本機能の狙いそのもの。
+     `src/ticket_automation.rs`のモジュールdoc・README.md(日英)の
+     該当箇所をこの理解に合わせて修正した。
+  3. **検証**: `cargo build`/`cargo test`(12件全green、新規5件は
+     `ticket_automation`モジュール——取り込み・重複防止・Closed除外・
+     対応済みマーク・永続化の往復)。実バイナリを起動し
+     `POST /api/tickets/poll-now`・`GET /api/tickets/pending-tasks`を
+     実HTTPで確認。VPS本番(`https://runo.tokyo/chiketto`実接続、
+     現状チケット0件のため取り込みも0件だがエラー無し)へのデプロイ・
+     全既存パス(`/`・`/blog`・`/chiketto`・`/ec`・`/rs-git/ui/`・
+     `/rs-sync/`・`/RS-AI-DevOps`)の継続動作を確認済み。
+  - 次にすべきこと: (1) RS-Chikettoに実際にテストチケットを作成した
+    上でのフルE2E検証(現状は0件チケットでの接続確認のみ)、
+    (2) 標準Redmine REST APIでの同機能実装、(3) Claude Code Desktop等
+    から実際にこのキューを参照して対応する実運用フローの確立。
+
 - **2026-07-22 初版実装**: ユーザーから直接「エコシステム全体マップの
   自動生成エージェント管理をRS-AI-DevOpsという名前で製品化し、多数の
   AIツール・多数のGit/課題管理サービスに対応させ、日英2言語・Windows/

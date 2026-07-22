@@ -34,6 +34,22 @@ RS_AI_DEVOPS_SCAN_ROOT=/path/to/your/repos ./target/release/rs-ai-devops
 # http://127.0.0.1:8097/ を開く
 ```
 
+## チケット自動対応機能(2026-07-22実装)
+
+RS-Chiketto(将来的に標準Redmineも)を定期ポーリングし、未対応のチケットを
+検出したらClaude/Claude Code Desktop/Cursor/ChatGPT/Gemini/DeepSeek/Grok
+向けのタスク依頼プロンプトを自動生成する機能。
+
+**設計意図**: 第三者のチャットUI(ChatGPT/Gemini/DeepSeek/Grok)を外部
+APIで強制的に呼び出す方式ではない。狙いは、**RS-Chiketto/Redmineの
+チケット情報を、Claude Code Desktop等のAIツールが実際に読み込む形
+(CLAUDE.md/.cursorrules/AGENTS.md相当のコンテキスト)へ変換して提示
+すること**——これにより各AIツールは自分自身のセッション内で課題管理
+システムの状況を丸ごと把握でき、人間が個別にチケットの内容を説明する
+手間を省いた上で対応に着手できる。「チケット→AIツールへの状況把握・
+引き継ぎ」を自動化することで、「チケットが来たら自動対応する」という
+体験を再現している。
+
 ## API
 
 - `GET /api/projects` — 検出済みプロジェクト一覧(JSON)
@@ -42,6 +58,11 @@ RS_AI_DEVOPS_SCAN_ROOT=/path/to/your/repos ./target/release/rs-ai-devops
 - `GET /api/rs-chiketto/health` — RS-Chikettoの到達性確認
 - `GET /api/generate?target=claude|cursor|generic&name=...&description=...&repo_url=...`
   — AIツール向けコンテキストファイル雛形を生成
+- `POST /api/tickets/poll-now` — RS-Chikettoを即座にポーリングし、
+  未対応チケットをタスクキューへ反映
+- `GET /api/tickets/pending-tasks?target=claude|cursor|generic` —
+  対象AIツール向けの未対応タスク依頼プロンプト一覧
+- `POST /api/tickets/:ticket_id/handled/:target` — 対応済みとしてマーク
 
 ## インストーラー
 
@@ -73,10 +94,11 @@ Web UI(`/`)の「ダウンロード」節から、Linux向け`install.sh`・Wind
 - **WEBアプリ開発全体のロードマップ自動生成機能**: `runo-scanner`が検出
   したプロジェクト群のHANDOFF「次にすべきこと」を横断的に集計し、
   エコシステム全体としての開発ロードマップを自動生成する機能。
-- **Redmine/RS-Chiketto連携の拡張(チケット管理対応)**: 現状はヘルス
-  チェック・到達性確認のみだが、実際のチケット作成・更新・一覧表示まで
-  対応する課題管理連携へ拡張する(標準Redmine REST API・RS-Chiketto
-  双方を同じインターフェースで扱う設計を維持する)。
+- ~~**Redmine/RS-Chiketto連携の拡張(チケット管理対応)**~~ → **2026-07-22
+  実装済み**: RS-Chikettoのチケットを定期ポーリングし、未対応チケットを
+  Claude/Cursor/汎用AI向けのタスク依頼プロンプトへ自動変換する機能を
+  実装(詳細は上記「チケット自動対応機能」節参照)。標準Redmine REST API
+  への対応は引き続き未着手。
 
 これらは全て「未着手」であり、承認待ちの提案ではなく次に着手すべき実装
 対象として記録している(このエコシステムの既存運用ルールに準拠)。
@@ -108,6 +130,22 @@ Built on top of `runo-scanner` (project auto-detection) and `RS-Sync`
   - `.cursorrules` template for Cursor (implemented)
   - generic `AGENTS.md` template for ChatGPT / Gemini / DeepSeek / Grok
     (implemented, usable as a system-prompt seed as-is)
+
+### Ticket automation (implemented 2026-07-22)
+
+Polls RS-Chiketto (and, in future, standard Redmine) for open tickets and
+auto-generates ready-to-use task prompts for Claude / Claude Code Desktop /
+Cursor / ChatGPT / Gemini / DeepSeek / Grok.
+
+**Design intent**: this is not "force-calling" a third-party chat UI (ChatGPT/
+Gemini/DeepSeek/Grok) through an external API. The point is to **translate
+RS-Chiketto/Redmine ticket data into the context format an AI tool actually
+reads** (CLAUDE.md/.cursorrules/AGENTS.md-equivalent) — so any of those
+tools can pick up the full picture of the issue tracker inside its own
+session, without a human manually copy-pasting each ticket's contents. By
+automating the "ticket → situational handoff to an AI tool" step, this
+reproduces the experience of "a ticket comes in and gets handled
+automatically."
 
 ### Local usage
 
@@ -144,10 +182,11 @@ only:
 - **Auto-generated web-app development roadmap**: aggregate the "next
   steps" from every project's HANDOFF (as detected by `runo-scanner`) into
   a single, ecosystem-wide development roadmap.
-- **Expanded Redmine/RS-Chiketto integration (ticket management)**:
-  currently limited to health-check/reachability; extend to real ticket
-  creation, updates, and listing (keeping standard Redmine REST API and
-  RS-Chiketto behind the same interface).
+- ~~**Expanded Redmine/RS-Chiketto integration (ticket management)**~~ →
+  **implemented 2026-07-22**: polls RS-Chiketto tickets and converts
+  unhandled ones into task prompts for Claude/Cursor/generic AI targets
+  (see "Ticket automation" above). Standard Redmine REST API support is
+  still not started.
 
 All of the above are "not yet started" — per this ecosystem's existing
 operational policy, that means they are recorded as the next implementation
