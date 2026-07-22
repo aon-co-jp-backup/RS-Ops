@@ -21,16 +21,25 @@ pub fn generate_template(target: AiTarget, project_name: &str, description: &str
              - Prefer small, verifiable changes; run the test suite before considering a change complete.\n\
              - Do not fabricate completion — verify with a real build/test/HTTP check.\n"
         ),
-        AiTarget::Generic => format!(
-            "# AGENTS.md — {project_name}\n\n\
-             You are assisting with development on the \"{project_name}\" project.\n\n\
-             ## Project role\n{description}\n\n\
-             ## Repository\n{repo_url}\n\n\
-             ## Ground rules\n\
-             - Verify claims with actual build/test/HTTP checks before reporting completion.\n\
-             - Prefer small, reversible changes.\n\
-             (This generic template is intended as a system-prompt seed for ChatGPT, Gemini, DeepSeek, Grok, or any other LLM-based coding assistant.)\n"
-        ),
+        AiTarget::ClaudeBrowser
+        | AiTarget::ChatGpt
+        | AiTarget::Gemini
+        | AiTarget::DeepSeek
+        | AiTarget::Grok
+        | AiTarget::Generic => {
+            let tool = target.display_name();
+            format!(
+                "# AGENTS.md — {project_name} (for {tool})\n\n\
+                 You are assisting with development on the \"{project_name}\" project.\n\n\
+                 ## Project role\n{description}\n\n\
+                 ## Repository\n{repo_url}\n\n\
+                 ## Ground rules\n\
+                 - Verify claims with actual build/test/HTTP checks before reporting completion.\n\
+                 - Prefer small, reversible changes.\n\
+                 (This template is a system-prompt seed for {tool}. RS-Ops does not call {tool}'s \
+                 API or launch it automatically — paste or feed this text into {tool} yourself.)\n"
+            )
+        }
     }
 }
 
@@ -60,14 +69,22 @@ pub fn generate_ticket_task_prompt(
              Source: {tracker_url}\n\n\
              Please implement/fix this. Verify with a real build/test before considering it done.\n"
         ),
-        AiTarget::Generic => format!(
-            "You have been assigned ticket #{ticket_id} from an issue tracker.\n\n\
-             Title: {title}\n\
-             Description: {description}\n\
-             Source: {tracker_url}\n\n\
-             Please implement or fix what this ticket describes, and verify your change with \
-             an actual build/test run — do not report completion based on a type-check alone.\n"
-        ),
+        AiTarget::ClaudeBrowser
+        | AiTarget::ChatGpt
+        | AiTarget::Gemini
+        | AiTarget::DeepSeek
+        | AiTarget::Grok
+        | AiTarget::Generic => {
+            let tool = target.display_name();
+            format!(
+                "[For {tool}] You have been assigned ticket #{ticket_id} from an issue tracker.\n\n\
+                 Title: {title}\n\
+                 Description: {description}\n\
+                 Source: {tracker_url}\n\n\
+                 Please implement or fix what this ticket describes, and verify your change with \
+                 an actual build/test run — do not report completion based on a type-check alone.\n"
+            )
+        }
     }
 }
 
@@ -96,11 +113,19 @@ mod tests {
 
     #[test]
     fn generates_ticket_prompt_for_each_target() {
-        for target in [AiTarget::Claude, AiTarget::Cursor, AiTarget::Generic] {
+        for target in AiTarget::all() {
             let out = generate_ticket_task_prompt(target, 42, "Fix login bug", "Users can't log in.", "https://runo.tokyo/chiketto");
             assert!(out.contains("42"));
             assert!(out.contains("Fix login bug"));
             assert!(out.contains("Users can't log in."));
+        }
+    }
+
+    #[test]
+    fn generates_named_template_for_each_third_party_ai_tool() {
+        for target in [AiTarget::ClaudeBrowser, AiTarget::ChatGpt, AiTarget::Gemini, AiTarget::DeepSeek, AiTarget::Grok] {
+            let out = generate_template(target, "demo-proj", "A demo.", "https://github.com/x/demo-proj");
+            assert!(out.contains(target.display_name()), "output for {target:?} should mention its own display name");
         }
     }
 }

@@ -65,6 +65,81 @@ RS-Sync/RS-Git等と同じ方針: `poem`クレートを直接利用する単純�
 
 ## HANDOFF
 
+- **2026-07-22(続き3) Bitbucket/GitLab/標準Redmineを実装、AIターゲットを
+  個別命名、優先度UIに正直な注記を追加**: ユーザーから「Git/課題管理
+  サービスを完全に対応して」「呼び出しはClaude/Claude Code Desktop/
+  Claude(ブラウザ)/ChatGPT/Gemini/DeepSeek/Grokに完全に対応して」
+  「星が一つもついていないか、星一つは、今は対応しなくて良いと
+  判断致します、と英語と日本語で書いておいて」との3点の指示を受けて対応。
+  1. **`src/provider.rs`**: `GitLabProvider`(`/api/v4/users/:user/projects`)・
+     `BitbucketProvider`(`/2.0/repositories/:workspace`)・
+     `RedmineProvider`(`/issues.json`)を新規実装。いずれも認証無しの
+     公開APIで、実バイナリを起動して実HTTPで検証済み——GitLabは
+     `gitlab.com`の実ユーザー`sytses`のプロジェクト一覧、Bitbucketは
+     `bitbucket.org`の`atlassian`workspace、Redmineは`www.redmine.org`
+     自身の`/issues.json`(Redmine自身がRedmineで運営されているため、
+     実在の公開Redmineインスタンスとして使えた)。`GitbucketProvider`も
+     実装したが、**GitBucketには検証可能な公開デモインスタンスが
+     存在しないため、この session ではライブ検証できていない**——
+     GitBucket公式が謳う「GitHub API v3互換」の形状に基づいて書いた
+     コードである旨を`GitService::implementation_status`・
+     `provider.rs`のdocコメント両方に正直に明記した(嘘をつかない
+     ため、ここだけ「未検証」を隠さない)。
+  2. **`src/model.rs`の`AiTarget`拡張**: 従来`Claude`/`Cursor`/`Generic`
+     の3種類だったところを、`ClaudeBrowser`(claude.ai/Claude in Chrome)・
+     `ChatGpt`・`Gemini`・`DeepSeek`・`Grok`を個別のenum variantとして
+     追加(8種類に拡張)。出力フォーマット自体はGeneric系(AGENTS.md
+     相当のプレーンテキスト)を共有するが、API/UI上で各ツール名を
+     明示的に選択・区別できるようにした。**正直な開示は変わらない**:
+     これら第三者チャットUIへ本サービスからAPIを強制呼び出しする
+     機能は無い(そのAPI/セッションを保有していないため)、個別化は
+     「宛先ラベル付きのテキストを分けて生成・提示できる」ところまで。
+     `AiTarget::all()`を追加し、`ticket_automation`の全ターゲット
+     走査・テストのハードコードされた3要素配列をこれに置き換えた。
+  3. **UI(`static/index.html`)**: 「対応AIツール」表を8行に展開
+     (各ツール個別表示)。第三者チャットUIへAPIを強制呼び出しできない
+     旨の注記(`ai_note`、日英両方)を追加。「検出されたプロジェクト」
+     節にも、星0または星1が「今は対応しなくて良い」を意味する旨の
+     注記(`priority_note`、ユーザー指定の日本語文言をそのまま採用、
+     英語は同義訳)を追加。
+  - **検証**: `cargo build`/`cargo test`(17件全green、新規2件は
+     `templates`モジュール——8ターゲット全走査・第三者ツール名が
+     出力に反映されること)。`cargo clippy --all-targets`は既存の
+     3件の警告(いずれも今回変更していないコード、pre-existing)のみで
+     新規警告0件。実バイナリを起動し`/api/gitlab/repos`・
+     `/api/bitbucket/repos`・`/api/redmine/issues`をそれぞれ実HTTPで
+     確認(上記1参照)、`/api/services`のレスポンスで各サービスの
+     ステータス文言が更新されていることも確認。
+  - 次にすべきこと: (1) GitBucketの実機検証(自前でGitBucketインスタンス
+    を立てて`base_url`パラメータ経由で確認)、(2) VPS本番への再デプロイ、
+    (3) UIの「検出されたプロジェクト」節で星1(=対応不要)のプロジェクトを
+    折りたたみ/フィルタ表示するUI改善。
+
+- **2026-07-22(続き2) 優先度(星1〜5評価)機能を実装**: ユーザーから
+  「リポジトリやURLなどで、優先順位を星5段階で評価出来る機能を持たせて。
+  星1は、今は開発などをしなくて良いと言う意味」との指示を受けて実装。
+  1. `src/priority.rs`新設: `PriorityStore`(JSON永続化、`data/priorities.json`、
+     `ticket_automation::TicketQueue`と同じ設計パターン)。キーは
+     プロジェクトの`path`(無ければ`github_url`)。星は1〜5の範囲外は
+     `set()`がErrを返し拒否する。
+  2. `model::ProjectEntry`に`priority: Option<u8>`フィールドを追加
+     (スキャン直後はNone、`GET /api/projects`ハンドラで`PriorityStore`
+     から突き合わせて合成——優先度自体はスキャン結果ではなくユーザー
+     設定値なので、スキャンとは別ファイルに永続化する設計)。
+  3. 新規API: `POST /api/priorities` (`{key, stars}`)・
+     `GET /api/priorities`(全件のkey→星のマップ)。
+  4. `static/index.html`: プロジェクト一覧テーブルに星評価列を追加。
+     ★をクリックするとその場でPOSTし、一覧を再読込して反映。
+  - **検証**: `cargo test`(20件全green、新規4件は`priority`モジュール
+    ——設定/取得の往復・範囲外拒否・永続化・全件取得)。実バイナリを
+    起動し`POST /api/priorities`→`GET /api/projects`で実際に
+    `priority`フィールドが反映されることをHTTPで確認、範囲外の値
+    (0や9)が拒否されることも確認。
+  - 次にすべきこと: (1) VPS本番への再デプロイ、(2) 星1(=着手不要)の
+    プロジェクトを一覧上部/下部でグルーピング・フィルタ表示する
+    UI改善、(3) ユーザーから示された他の未実装ロードマップ項目
+    (新ハードウェア対応・ロードマップ自動生成機能等)。
+
 - **2026-07-22(続き) チケット自動対応機能を実装、および設計意図の表現を
   ユーザー指摘により訂正**:
   1. `src/ticket_automation.rs`新設: RS-Chikettoを定期ポーリング

@@ -998,7 +998,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rs-ai-devops"
+name = "rs-ops"
 version = "0.1.0"
 dependencies = [
  "anyhow",

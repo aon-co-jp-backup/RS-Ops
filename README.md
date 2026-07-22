@@ -1,4 +1,4 @@
-# RS-AI-DevOps
+# RS-Ops
 
 日本語 | [English](#english)
 
@@ -17,20 +17,26 @@
 - **Redmine相当(RS-Chiketto)**: このエコシステム独自のRust+RPoem製
   Redmine版と連携し、ヘルスチェック・チケット一覧の到達性を確認する
   (実装済み・実HTTP検証済み)。
-- **Bitbucket / Gitbucket / GitLab / 標準Redmine**: アダプタのインター
-  フェースは定義済みだが、実際のライブ接続は未実装(正直に「対応予定」と
-  明記)。
-- **AIツール向けコンテキストファイル生成**:
+- **GitLab / Bitbucket / 標準Redmine**: それぞれ公開REST API(GitLab
+  v4・Bitbucket 2.0・Redmineの`/issues.json`)へ実際にHTTP接続する実装
+  (実装済み・実HTTP検証済み、2026-07-22)。
+- **Gitbucket**: GitHub API v3互換の仕様に基づいて実装したが、検証可能な
+  公開デモインスタンスが存在しないためこの時点では未検証(正直に開示、
+  自前のGitBucketインスタンスがあれば`base_url`で確認可能)。
+- **AIツール向けコンテキストファイル生成**(2026-07-22、ツールごとに
+  個別のターゲットとして命名・区別できるよう拡張):
   - Claude / Claude Code Desktop 向け `CLAUDE.md` 雛形(実装済み)
   - Cursor 向け `.cursorrules` 雛形(実装済み)
-  - ChatGPT / Gemini / DeepSeek / Grok 向けの汎用 `AGENTS.md` 雛形
-    (実装済み、system promptとしてそのまま使える形式)
+  - Claude(claude.ai / Claude in Chrome)・ChatGPT・Gemini・DeepSeek・
+    Grok・その他汎用ツール向けの`AGENTS.md`雛形(いずれも実装済み。
+    第三者チャットUIへAPIを強制呼び出す機能ではなく、ツール名を
+    明示したテキストを生成するところまでが対応範囲)
 
 ## 使い方(ローカル)
 
 ```bash
 cargo build --release
-RS_AI_DEVOPS_SCAN_ROOT=/path/to/your/repos ./target/release/rs-ai-devops
+RS_OPS_SCAN_ROOT=/path/to/your/repos ./target/release/rs-ops
 # http://127.0.0.1:8097/ を開く
 ```
 
@@ -55,12 +61,17 @@ APIで強制的に呼び出す方式ではない。狙いは、**RS-Chiketto/Red
 - `GET /api/projects` — 検出済みプロジェクト一覧(JSON)
 - `GET /api/services` — 対応Git/課題管理サービスと実装状況
 - `GET /api/github/repos` — GitHub(`aon-co-jp`)のリポジトリ一覧
+- `GET /api/gitlab/repos?username=...&base_url=...`(base_url省略時gitlab.com) — GitLabの公開プロジェクト一覧
+- `GET /api/bitbucket/repos?workspace=...` — Bitbucketの公開リポジトリ一覧
+- `GET /api/redmine/issues?base_url=...` — 標準Redmineの`/issues.json`
+- `GET /api/gitbucket/repos?base_url=...&owner=...` — GitBucket(未検証)
 - `GET /api/rs-chiketto/health` — RS-Chikettoの到達性確認
-- `GET /api/generate?target=claude|cursor|generic&name=...&description=...&repo_url=...`
+- `GET /api/priorities` / `POST /api/priorities {key, stars}` — プロジェクト優先度(星1〜5)の取得・設定
+- `GET /api/generate?target=claude|claude_browser|cursor|chatgpt|gemini|deepseek|grok|generic&name=...&description=...&repo_url=...`
   — AIツール向けコンテキストファイル雛形を生成
 - `POST /api/tickets/poll-now` — RS-Chikettoを即座にポーリングし、
   未対応チケットをタスクキューへ反映
-- `GET /api/tickets/pending-tasks?target=claude|cursor|generic` —
+- `GET /api/tickets/pending-tasks?target=<同上のいずれか>` —
   対象AIツール向けの未対応タスク依頼プロンプト一覧
 - `POST /api/tickets/:ticket_id/handled/:target` — 対応済みとしてマーク
 
@@ -72,10 +83,11 @@ Web UI(`/`)の「ダウンロード」節から、Linux向け`install.sh`・Wind
 
 ## 正直な開示(既知の制約)
 
-- Bitbucket/Gitbucket/GitLab/標準Redmineは未実装(インターフェースのみ)。
-- ChatGPT/Gemini/DeepSeek/Grokは、各社固有のAPI連携(実際にAPIキーで
-  呼び出す機能)ではなく、system promptとして使える汎用テンプレート生成
-  までの対応。
+- Gitbucketは検証可能な公開デモインスタンスが無いため未検証(コードは
+  GitHub API v3互換仕様に基づいて実装済み)。
+- ChatGPT/Gemini/DeepSeek/Grok/claude.aiは、各社固有のAPI連携(実際に
+  APIキーで呼び出す機能)ではなく、ツールごとに宛先を明示した
+  system-promptテキストを生成するところまでの対応。
 - コード署名・deb/msiパッケージングは未実装。
 
 ## ロードマップ(2026-07-22追記、ユーザー構想・未実装)
@@ -122,14 +134,19 @@ Built on top of `runo-scanner` (project auto-detection) and `RS-Sync`
 - **Redmine-equivalent (RS-Chiketto)**: talks to this ecosystem's own
   Rust+RPoem Redmine equivalent — health check and ticket-list reachability
   (implemented, verified over real HTTP).
-- **Bitbucket / Gitbucket / GitLab / standard Redmine**: adapter interfaces
-  are defined but not yet wired to a live connection (honestly marked
-  "planned").
-- **AI-agent context file generation**:
+- **GitLab / Bitbucket / standard Redmine**: real HTTP integrations against
+  each service's public REST API (GitLab v4, Bitbucket 2.0, Redmine's
+  `/issues.json`) — implemented and verified live (2026-07-22).
+- **Gitbucket**: implemented against its documented GitHub-API-v3-compatible
+  shape, but not verified live (no public demo instance exists — point it at
+  your own instance's `base_url` to confirm).
+- **AI-agent context file generation** (2026-07-22: each tool is now a
+  distinct, named target rather than one generic bucket):
   - `CLAUDE.md` template for Claude / Claude Code Desktop (implemented)
   - `.cursorrules` template for Cursor (implemented)
-  - generic `AGENTS.md` template for ChatGPT / Gemini / DeepSeek / Grok
-    (implemented, usable as a system-prompt seed as-is)
+  - `AGENTS.md` templates for Claude (claude.ai / Claude in Chrome), ChatGPT,
+    Gemini, DeepSeek, Grok, and any other generic tool (all implemented —
+    this does not call the third-party's API, only generates tool-labeled text)
 
 ### Ticket automation (implemented 2026-07-22)
 
@@ -151,16 +168,16 @@ automatically."
 
 ```bash
 cargo build --release
-RS_AI_DEVOPS_SCAN_ROOT=/path/to/your/repos ./target/release/rs-ai-devops
+RS_OPS_SCAN_ROOT=/path/to/your/repos ./target/release/rs-ops
 # open http://127.0.0.1:8097/
 ```
 
 ### Honest disclosures (known limitations)
 
-- Bitbucket/Gitbucket/GitLab/standard Redmine are interface-only, not wired
-  to live services yet.
-- ChatGPT/Gemini/DeepSeek/Grok support means generating a generic template
-  usable as a system prompt — not a per-vendor API integration.
+- Gitbucket is unverified live (no public demo instance exists to test
+  against); the code is implemented against its documented API shape.
+- ChatGPT/Gemini/DeepSeek/Grok/claude.ai support means generating a
+  tool-labeled system-prompt template — not a per-vendor API integration.
 - No code signing or deb/msi packaging yet.
 
 ### Roadmap (added 2026-07-22, user vision, not yet implemented)

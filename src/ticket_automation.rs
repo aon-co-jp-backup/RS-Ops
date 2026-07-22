@@ -71,7 +71,7 @@ impl TicketQueue {
                 continue;
             }
             state.seen_ticket_ids.insert(ticket.id);
-            for target in [AiTarget::Claude, AiTarget::Cursor, AiTarget::Generic] {
+            for target in AiTarget::all() {
                 let prompt = crate::templates::generate_ticket_task_prompt(
                     target,
                     ticket.id,

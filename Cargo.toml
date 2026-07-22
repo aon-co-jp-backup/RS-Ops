@@ -1,19 +1,19 @@
 [workspace]
 
 [package]
-name = "rs-ai-devops"
+name = "rs-ops"
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
 description = "Ecosystem map + AI-agent context generator across GitHub/Bitbucket/Gitbucket/GitLab/Redmine (incl. RS-Chiketto), exporting CLAUDE.md/.cursorrules for Claude/Cursor/ChatGPT/Gemini/DeepSeek/Grok"
-repository = "https://github.com/aon-co-jp/RS-AI-DevOps"
+repository = "https://github.com/aon-co-jp/RS-Ops"
 
 [lib]
-name = "rs_ai_devops"
+name = "rs_ops"
 path = "src/lib.rs"
 
 [[bin]]
-name = "rs-ai-devops"
+name = "rs-ops"
 path = "src/main.rs"
 
 [dependencies]

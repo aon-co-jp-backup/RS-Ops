@@ -6,7 +6,7 @@ use std::process::Command;
 /// `root`直下のディレクトリを1階層だけ走査し、`Cargo.toml`/`package.json`/
 /// `.runo-project`のいずれかを持つものをプロジェクトとして検出する
 /// (runo-scannerの簡易版。詳細な差分キャッシュ・再帰探索はrunno-scanner
-/// 本体に委ね、ここではRS-AI-DevOpsのUI表示に必要な最小限の実装とする)。
+/// 本体に委ね、ここではRS-OpsのUI表示に必要な最小限の実装とする)。
 pub fn scan_projects(root: &Path) -> Vec<ProjectEntry> {
     let markers = ["Cargo.toml", "package.json", ".runo-project"];
     let exclude = ["node_modules", ".git", "target", "dist", "build"];
@@ -36,6 +36,7 @@ pub fn scan_projects(root: &Path) -> Vec<ProjectEntry> {
             path: path.to_string_lossy().to_string(),
             github_url,
             description,
+            priority: None,
         });
     }
 

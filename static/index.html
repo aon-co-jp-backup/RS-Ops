@@ -1,5 +1,5 @@
 <meta charset="utf-8">
-<title>RS-AI-DevOps</title>
+<title>RS-Ops</title>
 <style>
   body { font-family: system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
   h1 { margin-bottom: 0.2rem; }
@@ -16,7 +16,7 @@
   code { background: #f0f0f0; padding: 0.1rem 0.3rem; border-radius: 3px; }
 </style>
 
-<h1>RS-AI-DevOps</h1>
+<h1>RS-Ops</h1>
 <p class="subtitle" data-i18n="subtitle">Loading…</p>
 
 <div class="lang-toggle">
@@ -39,15 +39,25 @@
   <table>
     <tbody>
       <tr><td>Claude / Claude Code Desktop</td><td class="status-implemented">CLAUDE.md — implemented</td></tr>
+      <tr><td>Claude (claude.ai / Claude in Chrome)</td><td class="status-implemented">AGENTS.md — implemented</td></tr>
       <tr><td>Cursor</td><td class="status-implemented">.cursorrules — implemented</td></tr>
-      <tr><td>ChatGPT / Gemini / DeepSeek / Grok</td><td class="status-implemented">AGENTS.md (generic) — implemented</td></tr>
+      <tr><td>ChatGPT</td><td class="status-implemented">AGENTS.md — implemented</td></tr>
+      <tr><td>Gemini</td><td class="status-implemented">AGENTS.md — implemented</td></tr>
+      <tr><td>DeepSeek</td><td class="status-implemented">AGENTS.md — implemented</td></tr>
+      <tr><td>Grok</td><td class="status-implemented">AGENTS.md — implemented</td></tr>
+      <tr><td>Generic (any other LLM tool)</td><td class="status-implemented">AGENTS.md — implemented</td></tr>
     </tbody>
   </table>
+  <p style="font-size:0.85rem;color:#666;" data-i18n="ai_note"></p>
 </section>
 
 <section>
   <h2 data-i18n="projects_h2">…</h2>
-  <table id="projects-table"><tbody></tbody></table>
+  <p style="font-size:0.85rem;color:#666;" data-i18n="priority_note"></p>
+  <table id="projects-table">
+    <thead><tr><th></th><th></th><th data-i18n="priority_th"></th></tr></thead>
+    <tbody></tbody>
+  </table>
 </section>
 
 <section>
@@ -65,25 +75,31 @@ const I18N = {
   ja: {
     subtitle: "エコシステム全体マップ × AIエージェント向けコンテキスト生成 × 複数Git/課題管理サービス連携",
     about_h2: "概要",
-    about_body: "RS-AI-DevOpsは、F:\\runo配下(またはリポジトリ全体)のプロジェクトをスキャンし、GitHub・Redmine(RS-Chiketto含む)等の複数サービスと連携しながら、Claude/Cursor/ChatGPT等のAIツールが読み込むコンテキストファイル(CLAUDE.md/.cursorrules/AGENTS.md)を自動生成するオープンソースツールです。",
+    about_body: "RS-Opsは、F:\\runo配下(またはリポジトリ全体)のプロジェクトをスキャンし、GitHub・Redmine(RS-Chiketto含む)等の複数サービスと連携しながら、Claude/Cursor/ChatGPT等のAIツールが読み込むコンテキストファイル(CLAUDE.md/.cursorrules/AGENTS.md)を自動生成するオープンソースツールです。",
     services_h2: "対応Git/課題管理サービス",
     ai_h2: "対応AIツール",
     projects_h2: "検出されたプロジェクト",
+    priority_th: "優先度(星1〜5、★1=今は着手不要)",
+    priority_note: "星が一つも付いていないか、星一つは、今は対応しなくて良いと判断致します。",
+    ai_note: "第三者チャットUI(ChatGPT/Gemini/DeepSeek/Grok/claude.ai等)へこのサービスからAPIを強制的に呼び出す機能はありません(それらのAPIやセッションを保有していないため)。ツールごとに宛先を明示したタスク依頼テキストをすぐ使える形で提示するところまでが対応範囲です。",
     download_h2: "ダウンロード(インストーラー付き)",
   },
   en: {
     subtitle: "Ecosystem map × AI-agent context generation × multi Git/issue-tracker integration",
     about_h2: "About",
-    about_body: "RS-AI-DevOps scans projects under F:\\runo (or any repo root), integrates with services like GitHub and Redmine (including RS-Chiketto, this ecosystem's Rust+RPoem Redmine equivalent), and auto-generates the context files (CLAUDE.md / .cursorrules / AGENTS.md) that AI coding tools such as Claude, Cursor, and ChatGPT read.",
+    about_body: "RS-Ops scans projects under F:\\runo (or any repo root), integrates with services like GitHub and Redmine (including RS-Chiketto, this ecosystem's Rust+RPoem Redmine equivalent), and auto-generates the context files (CLAUDE.md / .cursorrules / AGENTS.md) that AI coding tools such as Claude, Cursor, and ChatGPT read.",
     services_h2: "Supported Git / issue-tracker services",
     ai_h2: "Supported AI tools",
     projects_h2: "Detected projects",
+    priority_th: "Priority (1-5 stars, 1 star = no need to work on this now)",
+    priority_note: "No stars set, or exactly 1 star, both mean: no need to work on this right now.",
+    ai_note: "RS-Ops cannot force-call third-party chat UIs (ChatGPT/Gemini/DeepSeek/Grok/claude.ai, etc.) — it does not hold their APIs or sessions. Support ends at generating a ready-to-paste, tool-labeled task prompt.",
     download_h2: "Download (with installer)",
   },
 };
 
 function setLang(lang) {
-  localStorage.setItem("rs_ai_devops_lang", lang);
+  localStorage.setItem("rs_ops_lang", lang);
   document.querySelectorAll("[data-i18n]").forEach(el => {
     const key = el.getAttribute("data-i18n");
     if (I18N[lang][key]) el.textContent = I18N[lang][key];
@@ -103,6 +119,31 @@ async function loadServices() {
   }
 }
 
+async function setPriority(key, stars) {
+  await fetch("api/priorities", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ key, stars }),
+  });
+  loadProjects();
+}
+
+function starsCell(p) {
+  const key = p.path || p.github_url || p.name;
+  const current = p.priority || 0;
+  const span = document.createElement("span");
+  span.className = "stars";
+  for (let i = 1; i <= 5; i++) {
+    const star = document.createElement("a");
+    star.href = "javascript:void(0)";
+    star.textContent = i <= current ? "★" : "☆";
+    star.title = i === 1 ? "1 = 今は開発などをしなくて良い / not urgent" : String(i);
+    star.addEventListener("click", () => setPriority(key, i));
+    span.appendChild(star);
+  }
+  return span;
+}
+
 async function loadProjects() {
   const res = await fetch("api/projects");
   const data = await res.json();
@@ -111,12 +152,18 @@ async function loadProjects() {
   for (const p of data) {
     const tr = document.createElement("tr");
     const link = p.github_url ? `<a href="${p.github_url}" target="_blank">${p.name}</a>` : p.name;
-    tr.innerHTML = `<td>${link}</td><td>${p.description || ""}</td>`;
+    const nameTd = document.createElement("td");
+    nameTd.innerHTML = link;
+    const descTd = document.createElement("td");
+    descTd.textContent = p.description || "";
+    const starsTd = document.createElement("td");
+    starsTd.appendChild(starsCell(p));
+    tr.append(nameTd, descTd, starsTd);
     tbody.appendChild(tr);
   }
 }
 
-setLang(localStorage.getItem("rs_ai_devops_lang") || "ja");
+setLang(localStorage.getItem("rs_ops_lang") || "ja");
 loadServices();
 loadProjects();
 </script>

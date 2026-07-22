@@ -1,16 +1,16 @@
-# RS-AI-DevOps installer for Windows.
+# RS-Ops installer for Windows.
 # Honest scope: builds from source with cargo (no code-signed prebuilt binary
-# yet), installs to $env:LOCALAPPDATA\rs-ai-devops, and writes a convenience
+# yet), installs to $env:LOCALAPPDATA\rs-ops, and writes a convenience
 # launch script. Requires git and a Rust toolchain (installs rustup
 # automatically if missing, via winget if available, otherwise prompts the
 # user to install manually).
 
 $ErrorActionPreference = "Stop"
 
-$InstallDir = if ($env:RS_AI_DEVOPS_HOME) { $env:RS_AI_DEVOPS_HOME } else { Join-Path $env:LOCALAPPDATA "rs-ai-devops" }
-$RepoUrl = "https://github.com/aon-co-jp/RS-AI-DevOps.git"
+$InstallDir = if ($env:RS_OPS_HOME) { $env:RS_OPS_HOME } else { Join-Path $env:LOCALAPPDATA "rs-ops" }
+$RepoUrl = "https://github.com/aon-co-jp/RS-Ops.git"
 
-Write-Host "== RS-AI-DevOps installer (Windows) =="
+Write-Host "== RS-Ops installer (Windows) =="
 
 if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
     Write-Host "Rust toolchain not found."
@@ -38,14 +38,14 @@ if (-not (Test-Path $InstallDir)) {
 Set-Location $InstallDir
 cargo build --release
 
-$ExePath = Join-Path $InstallDir "target\release\rs-ai-devops.exe"
+$ExePath = Join-Path $InstallDir "target\release\rs-ops.exe"
 Write-Host ""
 Write-Host "Build complete: $ExePath"
 
-$LaunchScript = Join-Path $InstallDir "run-rs-ai-devops.ps1"
+$LaunchScript = Join-Path $InstallDir "run-rs-ops.ps1"
 @"
-`$env:RS_AI_DEVOPS_PORT = "8097"
-`$env:RS_AI_DEVOPS_SCAN_ROOT = "$env:USERPROFILE"
+`$env:RS_OPS_PORT = "8097"
+`$env:RS_OPS_SCAN_ROOT = "$env:USERPROFILE"
 & "$ExePath"
 "@ | Set-Content -Encoding utf8 $LaunchScript
 

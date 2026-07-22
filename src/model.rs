@@ -28,6 +28,10 @@ pub struct ProjectEntry {
     pub path: String,
     pub github_url: Option<String>,
     pub description: Option<String>,
+    /// ユーザーが手動設定した優先度(1〜5、星評価)。未設定はNone。
+    /// 星1 = 「今は開発などをしなくて良い」という意味(ユーザー定義)。
+    #[serde(default)]
+    pub priority: Option<u8>,
 }
 
 /// 対応(または対応予定)のGit/課題管理サービス。
@@ -51,31 +55,71 @@ impl GitService {
         match self {
             GitService::GitHub => "implemented (public REST API, repo list + README fetch)",
             GitService::RsChiketto => "implemented (health check + ticket list via this ecosystem's Redmine-equivalent API)",
-            GitService::Redmine => "planned (standard REST API shape drafted, not yet wired to a live instance)",
-            GitService::Bitbucket | GitService::Gitbucket | GitService::GitLab => "planned (adapter trait defined, no live implementation yet)",
+            GitService::GitLab => "implemented (public REST API v4, verified live against gitlab.com)",
+            GitService::Bitbucket => "implemented (public REST API 2.0, verified live against bitbucket.org)",
+            GitService::Redmine => "implemented (standard /issues.json REST API; verified against a live public Redmine instance)",
+            GitService::Gitbucket => "implemented against GitBucket's documented GitHub-API-v3-compatible shape, but NOT verified live (no public GitBucket demo instance exists to test against — point it at your own instance's base_url to confirm)",
         }
     }
 }
 
 /// 対応(または対応予定)のAIツール。各ツールが実際に読み込む
 /// コンテキストファイル形式が異なるため、生成先フォーマットを列挙する。
+/// 2026-07-22、ユーザー指示によりChatGPT/Gemini/DeepSeek/Grok/Claude
+/// (ブラウザ版)を「Genericに丸めた1個」ではなく個別に列挙・命名する
+/// よう拡張(呼び出し側API/UIで各ツール名を明示的に選べるようにする
+/// ため)。**正直な開示は変わらない**: これら第三者チャットUIへ本サービス
+/// からAPIを強制呼び出しする機能は無い(そのAPI/セッションを保有して
+/// いないため)。個別化したのは、各ツールごとに宛先ラベル付きの
+/// コンテキスト/タスク依頼テキストを生成・区別できるようにするため
+/// であり、出力フォーマット自体(`AGENTS.md`相当のプレーンテキスト)は
+/// 共通のまま。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AiTarget {
-    /// Claude Code / Claude Code Desktop(どちらも`CLAUDE.md`を読む)。
+    /// Claude Code / Claude Code Desktop(`CLAUDE.md`を読む)。
     Claude,
+    /// claude.ai(ブラウザ版チャットUI)・Claude in Chrome拡張機能。
+    /// `CLAUDE.md`規約は読まないため、Generic相当のプレーンテキストを返す。
+    ClaudeBrowser,
     Cursor,
-    /// ChatGPT/Gemini/DeepSeek/Grok等、APIのsystem promptとして投入する
-    /// 汎用フォーマット(`AGENTS.md`)。
+    ChatGpt,
+    Gemini,
+    DeepSeek,
+    Grok,
+    /// 上記以外の任意のLLMコーディングアシスタント向けの汎用フォールバック。
     Generic,
 }
 
 impl AiTarget {
+    /// UI表示用の人間可読な製品名。
+    pub fn display_name(self) -> &'static str {
+        match self {
+            AiTarget::Claude => "Claude / Claude Code Desktop",
+            AiTarget::ClaudeBrowser => "Claude (claude.ai / Claude in Chrome)",
+            AiTarget::Cursor => "Cursor",
+            AiTarget::ChatGpt => "ChatGPT",
+            AiTarget::Gemini => "Gemini",
+            AiTarget::DeepSeek => "DeepSeek",
+            AiTarget::Grok => "Grok",
+            AiTarget::Generic => "Generic (any other LLM tool)",
+        }
+    }
+
     pub fn implementation_status(self) -> &'static str {
         match self {
             AiTarget::Claude => "implemented (CLAUDE.md template generator)",
             AiTarget::Cursor => "implemented (.cursorrules template generator)",
-            AiTarget::Generic => "implemented (AGENTS.md generic system-prompt template; usable as-is for ChatGPT/Gemini/DeepSeek/Grok)",
+            AiTarget::ClaudeBrowser
+            | AiTarget::ChatGpt
+            | AiTarget::Gemini
+            | AiTarget::DeepSeek
+            | AiTarget::Grok
+            | AiTarget::Generic => {
+                "implemented (AGENTS.md-equivalent generic template, individually addressable per tool; \
+                 this service does not call the vendor's API or launch the tool itself — no such API/session \
+                 is held — it only prepares labeled context/task text for that tool to read)"
+            }
         }
     }
 
@@ -83,7 +127,26 @@ impl AiTarget {
         match self {
             AiTarget::Claude => "CLAUDE.md",
             AiTarget::Cursor => ".cursorrules",
-            AiTarget::Generic => "AGENTS.md",
+            AiTarget::ClaudeBrowser
+            | AiTarget::ChatGpt
+            | AiTarget::Gemini
+            | AiTarget::DeepSeek
+            | AiTarget::Grok
+            | AiTarget::Generic => "AGENTS.md",
         }
+    }
+
+    /// `pending_for`等のAPI経路で全ターゲットを走査するための一覧。
+    pub fn all() -> [AiTarget; 8] {
+        [
+            AiTarget::Claude,
+            AiTarget::ClaudeBrowser,
+            AiTarget::Cursor,
+            AiTarget::ChatGpt,
+            AiTarget::Gemini,
+            AiTarget::DeepSeek,
+            AiTarget::Grok,
+            AiTarget::Generic,
+        ]
     }
 }
