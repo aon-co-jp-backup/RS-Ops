@@ -81,6 +81,12 @@ Web UI(`/`)の「ダウンロード」節から、Linux向け`install.sh`・Wind
 `install.ps1`をダウンロードできる。いずれもソースからのcargoビルドを行う
 (署名済みバイナリ・deb/msiパッケージングは未実装、正直に開示)。
 
+2026-07-23、`.github/workflows/release.yml`を追加し、タグ(`v0.1.0`〜)
+push時にLinux x86_64・Windows x86_64向けのプリビルド済みバイナリを
+[GitHub Releases](https://github.com/aon-co-jp/RS-Ops/releases)へ自動
+添付するようにした(`install.sh`/`install.ps1`のソースビルド方式はそのまま
+維持、プリビルド済みバイナリを直接使いたい場合の代替手段として提供)。
+
 ## 正直な開示(既知の制約)
 
 - Gitbucketは検証可能な公開デモインスタンスが無いため未検証(コードは

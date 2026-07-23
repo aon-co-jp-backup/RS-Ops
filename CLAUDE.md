@@ -66,6 +66,24 @@ RS-Sync/RS-Git等と同じ方針: `poem`クレートを直接利用する単純�
 
 ## HANDOFF
 
+- **2026-07-23(続き) `.github/workflows/release.yml`を新規追加、
+  3点セット完備・v0.1.0タグでCI成功・GitHub Release実在確認まで完了**:
+  エコシステム全体インストーラー整備計画(正本: `open-raid-z/CLAUDE.md`
+  「エコシステム全体インストーラー整備計画」節)の一環。`install.sh`/
+  `install.ps1`は既存(ソースからのcargoビルド方式、変更無し)だった
+  ため、`release.yml`のみ新規追加した。Linux x86_64・Windows x86_64
+  向けにプリビルド済みバイナリをビルドし、`install.sh`/`install.ps1`と
+  一緒にtar.gz/zipへ同梱、GitHub Releasesへ`softprops/action-gh-release@v2`
+  で添付する構成(sibling path依存は無し、確認済み)。`v0.1.0`タグを
+  実際にpushし、`gh run list`で2ジョブ(Linux/Windows)とも
+  `completed success`、`gh release view v0.1.0`で
+  `rs-ops-linux-x86_64.tar.gz`/`rs-ops-windows-x86_64.zip`の両方が
+  実在することを確認した(型チェックのみでの完了報告ではない)。
+  README(日本語「インストーラー」節)にもプリビルド済みバイナリの
+  入手先を追記。
+  - 次にすべきこと: Android版インストーラー(未着手、他リポジトリと
+    共通のバックログ)。
+
 - **2026-07-22(続き4) runo.tokyo側でRS-Ops(RS-Git/aruaru-llmとのSET)を
   「プロジェクトシリーズ索引」+「エコシステム全体を見る」節で紹介**
   (ユーザー指示「RS-Ops/RS-Git/aruaru-llmのSETが完成したら
