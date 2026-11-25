@@ -58,24 +58,25 @@ APIで強制的に呼び出す方式ではない。狙いは、**RS-Chiketto/Red
 引き継ぎ」を自動化することで、「チケットが来たら自動対応する」という
 体験を再現している。
 
-## API
+## API(Connect、2026-11-25 から)
 
-- `GET /api/projects` — 検出済みプロジェクト一覧(JSON)
-- `GET /api/services` — 対応Git/課題管理サービスと実装状況
-- `GET /api/github/repos` — GitHub(`aon-co-jp`)のリポジトリ一覧
-- `GET /api/gitlab/repos?username=...&base_url=...`(base_url省略時gitlab.com) — GitLabの公開プロジェクト一覧
-- `GET /api/bitbucket/repos?workspace=...` — Bitbucketの公開リポジトリ一覧
-- `GET /api/redmine/issues?base_url=...` — 標準Redmineの`/issues.json`
-- `GET /api/gitbucket/repos?base_url=...&owner=...` — GitBucket(未検証)
-- `GET /api/rs-chiketto/health` — RS-Chikettoの到達性確認
-- `GET /api/priorities` / `POST /api/priorities {key, stars}` — プロジェクト優先度(星1〜5)の取得・設定
-- `GET /api/generate?target=claude|claude_browser|cursor|chatgpt|gemini|deepseek|grok|generic&name=...&description=...&repo_url=...`
-  — AIツール向けコンテキストファイル雛形を生成
-- `POST /api/tickets/poll-now` — RS-Chikettoを即座にポーリングし、
-  未対応チケットをタスクキューへ反映
-- `GET /api/tickets/pending-tasks?target=<同上のいずれか>` —
-  対象AIツール向けの未対応タスク依頼プロンプト一覧
-- `POST /api/tickets/:ticket_id/handled/:target` — 対応済みとしてマーク
+すべて `POST /rs_ops.<Service>/<Method>`、`content-type: application/json`、本文はJSON。
+旧 `GET/POST /api/...` は削除済み(404)。エラーは `{"code","message"}`。
+版(`v1`)は付けない(Versionless、足すだけで進化させる)。
+
+- `Projects/List` — 検出済みプロジェクト一覧
+- `Services/List` — 対応Git/課題管理サービスと実装状況
+- `Providers/GithubRepos` / `GitlabRepos` / `BitbucketRepos` / `GitbucketRepos` / `RsGitRepos` — 各サービスのリポジトリ一覧(`{username,base_url,workspace,owner}` を必要に応じて)
+- `Providers/RedmineIssues` — 標準Redmineの課題(`{base_url}`)
+- `Providers/RsChikettoHealth` / `AruaruLlmHealth` — 到達性確認
+- `Priorities/List` / `Priorities/Set {key, stars}` — プロジェクト優先度(星1〜5、Setは要ログイン)
+- `Context/Generate {target,name,description,repo_url}` — AIツール向けコンテキストファイル雛形(`target` は claude|claude_browser|cursor|chatgpt|gemini|deepseek|grok|generic)
+- `Tickets/PollNow` — RS-Chikettoを即座にポーリングしタスクキューへ反映
+- `Tickets/PendingTasks {target}` — 対象AIツール向けの未対応タスク依頼プロンプト
+- `Tickets/MarkHandled {source,ticket_id,target}` / `Tickets/SetEstimate {source,ticket_id,...}` / `Tickets/CompletionReports`
+- `Auth/RequestOtp {email}` / `Auth/VerifyOtp {email,code}` / `Auth/Logout`、`Accounts/List|Set|Remove`(管理者のみ)
+
+**English**: all calls are `POST /rs_ops.<Service>/<Method>` with a JSON body; the old `/api/...` REST routes are gone (404); errors are `{"code","message"}`; no version in names (Versionless).
 
 ## インストーラー
 
