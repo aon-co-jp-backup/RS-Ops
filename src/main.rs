@@ -756,4 +756,19 @@ mod handler_tests {
         let v: serde_json::Value = resp.json().await.value().deserialize();
         assert!(v.get("code").is_some() && v.get("message").is_some(), "{v}");
     }
+
+    /// Versionless: 知らない欄が付いていても無視する(足すだけで進化させるため)。
+    #[tokio::test]
+    async fn unknown_request_fields_are_ignored() {
+        let cfg = test_cfg();
+        let token = cfg.auth.create_session("admin@example.com");
+        let client = TestClient::new(build_app(cfg));
+        let resp = client
+            .post("/rs_ops.Priorities/Set")
+            .header("Authorization", format!("Bearer {token}"))
+            .body_json(&serde_json::json!({"key": "x", "stars": 3, "future_field": {"a": 1}}))
+            .send()
+            .await;
+        resp.assert_status_is_ok();
+    }
 }

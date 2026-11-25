@@ -331,3 +331,7 @@ targets, not proposals awaiting approval.
 ## 2026-11-25 REST全廃(Connect化) / REST abolished (Connect)
 **日本語**: 公開APIは `POST /rs_ops.<Service>/<Method>`(JSON)のみ。旧 `/api/...` は404。画面(`static/index.html`)も Connect に変更。試験42件成功、実起動で確認。版(`v1`)は付けない(Versionless、add-only)。本番VPSは未反映。
 **English**: The public API is only `POST /rs_ops.<Service>/<Method>` (JSON); old `/api/...` returns 404. The UI now calls Connect. 42 tests pass and a real run was checked. No `v1` (Versionless, add-only). Not yet deployed to the VPS.
+
+## Versionless API(2026-11-25)
+**日本語**: RS-Ops のAPIは版を持たない(`rs_ops.<Service>/<Method>` に `v1` なし)。欄は足すだけ、足す欄は省略可能、知らない欄は無視する(試験 `unknown_request_fields_are_ignored`)。名前変更は新名を足して旧を非推奨にし、期限は既定で6か月以上。方針の正本は [`runo/API-POLICY.md`](https://github.com/aon-co-jp/runo/blob/main/API-POLICY.md)。
+**English**: RS-Ops's API has no version (`rs_ops.<Service>/<Method>`, no `v1`). Only add fields, new fields are optional, unknown fields are ignored (test `unknown_request_fields_are_ignored`). Rename by adding the new name and deprecating the old one (default deadline 6 months or more). Policy source: the link above.
