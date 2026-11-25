@@ -326,3 +326,7 @@ targets, not proposals awaiting approval.
 - **WASM по-прежнему остаётся технологией для интерфейса.** Изменилось лишь то, что вызываемый им API теперь построен на Connect.
 - Интерфейсы, форма которых задана внешним стандартом (ACME, обратные вызовы OAuth, вебхуки сторонних сервисов, проверки работоспособности, статические файлы, OTLP), остаются обычным HTTP.
 - **Если есть сомнения — выбирайте Connect.**
+
+## 2026-11-25 REST全廃(Connect化) / REST abolished (Connect)
+**日本語**: 公開APIは `POST /rs_ops.<Service>/<Method>`(JSON)のみ。旧 `/api/...` は404。画面(`static/index.html`)も Connect に変更。試験42件成功、実起動で確認。版(`v1`)は付けない(Versionless、add-only)。本番VPSは未反映。
+**English**: The public API is only `POST /rs_ops.<Service>/<Method>` (JSON); old `/api/...` returns 404. The UI now calls Connect. 42 tests pass and a real run was checked. No `v1` (Versionless, add-only). Not yet deployed to the VPS.

@@ -1,4 +1,4 @@
-<meta charset="utf-8">
+data.error || data.message || "login failed"|| data.message || "failed to send code"<meta charset="utf-8">
 <title>RS-Ops</title>
 <style>
   body { font-family: system-ui, sans-serif; max-width: 900px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
@@ -596,7 +596,7 @@ function setLang(lang) {
 }
 
 async function loadServices() {
-  const res = await fetch("api/services");
+  const res = await rpc("Services/List", {}, false);
   const data = await res.json();
   const tbody = document.querySelector("#services-table tbody");
   tbody.innerHTML = "";
@@ -609,6 +609,13 @@ async function loadServices() {
 }
 
 // --- Auth (OTP login, matching RS-Git's design) ---
+
+// Connect(REST全廃): POST /rs_ops.<Service>/<Method>、本文は JSON。
+function rpc(name, body, auth) {
+  const headers = { "content-type": "application/json" };
+  if (auth !== false) { const t = localStorage.getItem("rs_ops_token"); if (t) headers["Authorization"] = `Bearer ${t}`; }
+  return fetch(`rs_ops.${name}`, { method: "POST", headers, body: JSON.stringify(body || {}) });
+}
 
 function authToken() { return localStorage.getItem("rs_ops_token"); }
 function authEmail() { return localStorage.getItem("rs_ops_email"); }
@@ -629,10 +636,7 @@ async function requestOtp() {
   showAuthError("");
   const email = document.getElementById("login-email").value.trim();
   if (!email) return;
-  const res = await fetch("api/auth/request-otp", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email }),
+  const res = await rpc("Auth/RequestOtp", { email }, false),
   });
   const data = await res.json();
   if (!data.ok) {
@@ -647,10 +651,7 @@ async function verifyOtp() {
   showAuthError("");
   const email = document.getElementById("login-email").value.trim();
   const code = document.getElementById("login-code").value.trim();
-  const res = await fetch("api/auth/verify-otp", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email, code }),
+  const res = await rpc("Auth/VerifyOtp", { email, code }, false),
   });
   const data = await res.json();
   if (!data.ok) {
@@ -664,7 +665,7 @@ async function verifyOtp() {
 }
 
 async function logout() {
-  await authorizedFetch("api/auth/logout", { method: "POST" });
+  await rpc("Auth/Logout", {});
   localStorage.removeItem("rs_ops_token");
   localStorage.removeItem("rs_ops_email");
   localStorage.removeItem("rs_ops_role");
@@ -684,7 +685,7 @@ function renderAuthState() {
 }
 
 async function loadAccounts() {
-  const res = await authorizedFetch("api/accounts");
+  const res = await rpc("Accounts/List", {});
   if (!res.ok) return;
   const data = await res.json();
   const tbody = document.getElementById("accounts-table");
@@ -701,27 +702,20 @@ async function addMember() {
   const email = document.getElementById("new-member-email").value.trim();
   const role = document.getElementById("new-member-role").value;
   if (!email) return;
-  await authorizedFetch("api/accounts", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email, role }),
-  });
+  await rpc("Accounts/Set", { email, role });
   document.getElementById("new-member-email").value = "";
   loadAccounts();
 }
 
 async function removeMember(email) {
-  await authorizedFetch(`api/accounts/${encodeURIComponent(email)}`, { method: "DELETE" });
+  await rpc("Accounts/Remove", { email });
   loadAccounts();
 }
 
 // --- Priority stars ---
 
 async function setPriority(key, stars) {
-  const res = await authorizedFetch("api/priorities", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ key, stars }),
+  const res = await rpc("Priorities/Set", { key, stars }),
   });
   if (res.status === 401) {
     showAuthError("Login required to edit priority. / 編集にはログインが必要です。");
@@ -751,7 +745,7 @@ function starsCell(p) {
 }
 
 async function loadProjects() {
-  const res = await fetch("api/projects");
+  const res = await rpc("Projects/List", {}, false);
   const data = await res.json();
   const tbody = document.querySelector("#projects-table tbody");
   tbody.innerHTML = "";
@@ -770,7 +764,7 @@ async function loadProjects() {
 }
 
 async function loadCompletionReports() {
-  const res = await fetch("api/tickets/completion-reports");
+  const res = await rpc("Tickets/CompletionReports", {}, false);
   const data = await res.json();
   const tbody = document.querySelector("#reports-table tbody");
   tbody.innerHTML = "";

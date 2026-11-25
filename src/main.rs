@@ -11,6 +11,8 @@ use rs_ops::scanner;
 use rs_ops::templates::generate_template;
 use rs_ops::ticket_automation::{self, TicketQueue};
 
+mod connect;
+
 use poem::{get, handler, listener::TcpListener, post, web::Json, web::Path as PPath, web::Query, EndpointExt, Request, Route, Server};
 use serde::Deserialize;
 use std::path::PathBuf;
@@ -515,35 +517,57 @@ fn remove_account(req: &Request, cfg: poem::web::Data<&Arc<AppConfig>>, PPath(em
     poem::Response::builder().header("content-type", "application/json").body(serde_json::json!({"ok": removed}).to_string())
 }
 
+macro_rules! rpc_table {
+    ($( ($svc:literal, $m:literal, $inner:literal, $q:literal, $h:expr) ),* $(,)?) => {{
+        let inner = Route::new() $( .at($inner, post($h)) )*;
+        let defs: Vec<connect::Def> = vec![$( connect::Def { service: $svc, method: $m, inner: $inner, query: $q } ),*];
+        (inner, defs)
+    }};
+}
+
+/// Connect のパッケージ名(`POST /rs_ops.<Service>/<Method>`)。
+pub const PACKAGE: &str = "rs_ops";
+
+/// 公開するのは `/`・`/healthz`・`/install.sh`・`/install.ps1`(規格どおりの GET)と
+/// Connect の `POST /rs_ops.<Service>/<Method>` だけ。旧 REST(`/api/...`)の経路は無い(REST全廃、2026-11-25)。
 fn build_app(cfg: Arc<AppConfig>) -> impl poem::Endpoint {
-    Route::new()
+    let (inner, defs) = rpc_table![
+        ("Projects", "List", "/Projects/List", true, list_projects),
+        ("Priorities", "List", "/Priorities/List", true, list_priorities),
+        ("Priorities", "Set", "/Priorities/Set", false, set_priority),
+        ("Services", "List", "/Services/List", true, service_statuses),
+        ("Providers", "GithubRepos", "/Providers/GithubRepos", true, github_org_repos),
+        ("Providers", "GitlabRepos", "/Providers/GitlabRepos", true, gitlab_repos),
+        ("Providers", "BitbucketRepos", "/Providers/BitbucketRepos", true, bitbucket_repos),
+        ("Providers", "RedmineIssues", "/Providers/RedmineIssues", true, redmine_issues),
+        ("Providers", "GitbucketRepos", "/Providers/GitbucketRepos", true, gitbucket_repos),
+        ("Providers", "RsChikettoHealth", "/Providers/RsChikettoHealth", true, rs_chiketto_health),
+        ("Providers", "RsGitRepos", "/Providers/RsGitRepos", true, rs_git_repos),
+        ("Providers", "AruaruLlmHealth", "/Providers/AruaruLlmHealth", true, aruaru_llm_health),
+        ("Context", "Generate", "/Context/Generate", true, generate),
+        ("Tickets", "PollNow", "/Tickets/PollNow", false, poll_tickets_now),
+        ("Tickets", "PendingTasks", "/Tickets/PendingTasks", true, pending_tasks),
+        ("Tickets", "CompletionReports", "/Tickets/CompletionReports", true, completion_reports),
+        ("Tickets", "MarkHandled", "/Tickets/MarkHandled/:source/:ticket_id/:target", false, mark_task_handled),
+        ("Tickets", "SetEstimate", "/Tickets/SetEstimate/:source/:ticket_id", false, set_ticket_estimate),
+        ("Auth", "RequestOtp", "/Auth/RequestOtp", false, request_otp),
+        ("Auth", "VerifyOtp", "/Auth/VerifyOtp", false, verify_otp),
+        ("Auth", "Logout", "/Auth/Logout", false, logout),
+        ("Accounts", "List", "/Accounts/List", true, list_accounts),
+        ("Accounts", "Set", "/Accounts/Set", false, set_account_role),
+        ("Accounts", "Remove", "/Accounts/Remove/:email", false, remove_account),
+    ];
+    let inner: Arc<poem::endpoint::BoxEndpoint<'static, poem::Response>> = Arc::new(inner.data(cfg.clone()).boxed());
+    let mut app = Route::new()
         .at("/", get(index))
         .at("/healthz", get(healthz))
         .at("/install.sh", get(install_sh))
-        .at("/install.ps1", get(install_ps1))
-        .at("/api/projects", get(list_projects))
-        .at("/api/priorities", get(list_priorities).post(set_priority))
-        .at("/api/services", get(service_statuses))
-        .at("/api/github/repos", get(github_org_repos))
-        .at("/api/gitlab/repos", get(gitlab_repos))
-        .at("/api/bitbucket/repos", get(bitbucket_repos))
-        .at("/api/redmine/issues", get(redmine_issues))
-        .at("/api/gitbucket/repos", get(gitbucket_repos))
-        .at("/api/rs-chiketto/health", get(rs_chiketto_health))
-        .at("/api/rs-git/repos", get(rs_git_repos))
-        .at("/api/aruaru-llm/health", get(aruaru_llm_health))
-        .at("/api/generate", get(generate))
-        .at("/api/tickets/poll-now", post(poll_tickets_now))
-        .at("/api/tickets/pending-tasks", get(pending_tasks))
-        .at("/api/tickets/completion-reports", get(completion_reports))
-        .at("/api/tickets/:source/:ticket_id/handled/:target", post(mark_task_handled))
-        .at("/api/tickets/:source/:ticket_id/estimate", post(set_ticket_estimate))
-        .at("/api/auth/request-otp", post(request_otp))
-        .at("/api/auth/verify-otp", post(verify_otp))
-        .at("/api/auth/logout", post(logout))
-        .at("/api/accounts", get(list_accounts).post(set_account_role))
-        .at("/api/accounts/:email", poem::delete(remove_account))
-        .data(cfg)
+        .at("/install.ps1", get(install_ps1));
+    for d in defs {
+        let call = connect::Call { inner: inner.clone(), def: d, package: PACKAGE };
+        app = app.at(format!("/{}.{}/{}", PACKAGE, d.service, d.method), post(call));
+    }
+    app.data(cfg)
 }
 
 #[tokio::main]
@@ -638,7 +662,7 @@ mod handler_tests {
     async fn set_priority_without_login_is_401() {
         let cfg = test_cfg();
         let client = TestClient::new(build_app(cfg));
-        let resp = client.post("/api/priorities").body_json(&serde_json::json!({"key": "x", "stars": 3})).send().await;
+        let resp = client.post("/rs_ops.Priorities/Set").body_json(&serde_json::json!({"key": "x", "stars": 3})).send().await;
         resp.assert_status(poem::http::StatusCode::UNAUTHORIZED);
     }
 
@@ -648,7 +672,7 @@ mod handler_tests {
         let token = cfg.auth.create_session("admin@example.com");
         let client = TestClient::new(build_app(cfg));
         let resp = client
-            .post("/api/priorities")
+            .post("/rs_ops.Priorities/Set")
             .header("Authorization", format!("Bearer {token}"))
             .body_json(&serde_json::json!({"key": "x", "stars": 3}))
             .send()
@@ -663,7 +687,7 @@ mod handler_tests {
         let token = cfg.auth.create_session("viewer@example.com");
         let client = TestClient::new(build_app(cfg));
         let resp = client
-            .post("/api/priorities")
+            .post("/rs_ops.Priorities/Set")
             .header("Authorization", format!("Bearer {token}"))
             .body_json(&serde_json::json!({"key": "x", "stars": 3}))
             .send()
@@ -678,7 +702,7 @@ mod handler_tests {
         let token = cfg.auth.create_session("editor@example.com");
         let client = TestClient::new(build_app(cfg));
         let resp = client
-            .post("/api/priorities")
+            .post("/rs_ops.Priorities/Set")
             .header("Authorization", format!("Bearer {token}"))
             .body_json(&serde_json::json!({"key": "x", "stars": 3}))
             .send()
@@ -694,10 +718,10 @@ mod handler_tests {
         let admin_token = cfg.auth.create_session("admin@example.com");
         let client = TestClient::new(build_app(cfg));
 
-        let resp = client.get("/api/accounts").header("Authorization", format!("Bearer {editor_token}")).send().await;
+        let resp = client.post("/rs_ops.Accounts/List").body_json(&serde_json::json!({})).header("Authorization", format!("Bearer {editor_token}")).send().await;
         resp.assert_status(poem::http::StatusCode::UNAUTHORIZED);
 
-        let resp = client.get("/api/accounts").header("Authorization", format!("Bearer {admin_token}")).send().await;
+        let resp = client.post("/rs_ops.Accounts/List").body_json(&serde_json::json!({})).header("Authorization", format!("Bearer {admin_token}")).send().await;
         resp.assert_status_is_ok();
     }
 
@@ -708,14 +732,28 @@ mod handler_tests {
         let client = TestClient::new(build_app(cfg));
 
         let resp = client
-            .post("/api/accounts")
+            .post("/rs_ops.Accounts/Set")
             .header("Authorization", format!("Bearer {admin_token}"))
             .body_json(&serde_json::json!({"email": "new@example.com", "role": "editor"}))
             .send()
             .await;
         resp.assert_status_is_ok();
 
-        let resp = client.delete("/api/accounts/new@example.com").header("Authorization", format!("Bearer {admin_token}")).send().await;
+        let resp = client.post("/rs_ops.Accounts/Remove").body_json(&serde_json::json!({"email": "new@example.com"})).header("Authorization", format!("Bearer {admin_token}")).send().await;
         resp.assert_status_is_ok();
+    }
+
+    #[tokio::test]
+    async fn legacy_rest_routes_are_gone_and_connect_errors_have_code_and_message() {
+        let cfg = test_cfg();
+        let client = TestClient::new(build_app(cfg));
+        let resp = client.get("/api/accounts").send().await;
+        resp.assert_status(poem::http::StatusCode::NOT_FOUND);
+        let resp = client.post("/api/priorities").body_json(&serde_json::json!({"key": "x", "stars": 3})).send().await;
+        resp.assert_status(poem::http::StatusCode::NOT_FOUND);
+        let resp = client.post("/rs_ops.Priorities/Set").body_json(&serde_json::json!({"key": "x", "stars": 3})).send().await;
+        resp.assert_status(poem::http::StatusCode::UNAUTHORIZED);
+        let v: serde_json::Value = resp.json().await.value().deserialize();
+        assert!(v.get("code").is_some() && v.get("message").is_some(), "{v}");
     }
 }
